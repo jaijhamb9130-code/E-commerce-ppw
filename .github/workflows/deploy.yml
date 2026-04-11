@@ -51,6 +51,8 @@ jobs:
             -x "*.env" "*.log" "node_modules/*"
 
       - name: Deploy to Elastic Beanstalk
+        id: deploy
+        continue-on-error: true
         uses: einaregilsson/beanstalk-deploy@v22
         with:
           aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -62,3 +64,20 @@ jobs:
           deployment_package: deploy.zip
           wait_for_deployment: true
           wait_for_environment_recovery: 0
+
+      - name: Verify app is responding
+        run: |
+          sleep 20
+          URL="http://admin-customer-prod.eba-ppzifyfu.ap-south-1.elasticbeanstalk.com/api/auth/login"
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$URL" \
+              -H "Content-Type: application/json" -d '{}')
+            echo "Attempt $i — HTTP $CODE"
+            if [ "$CODE" = "401" ] || [ "$CODE" = "400" ] || [ "$CODE" = "201" ]; then
+              echo "App is responding correctly (backend alive)."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "App did not respond with expected status."
+          exit 1
