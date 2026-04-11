@@ -1,0 +1,64 @@
+name: Deploy to Elastic Beanstalk
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install & build customer frontend
+        run: |
+          cd customer
+          npm ci
+          npm run build
+
+      - name: Install & build admin frontend
+        run: |
+          cd admin/frontend
+          npm ci
+          npm run build
+
+      - name: Install & build backend
+        run: |
+          cd admin/backend
+          npm ci
+          npm run build
+
+      - name: Stage frontend builds into backend/client/
+        run: |
+          rm -rf admin/backend/client
+          mkdir -p admin/backend/client/admin admin/backend/client/customer
+          cp -r admin/frontend/dist/. admin/backend/client/admin/
+          cp -r customer/dist/. admin/backend/client/customer/
+
+      - name: Create deployment bundle
+        run: |
+          cd admin/backend
+          zip -r ../../deploy.zip \
+            package.json package-lock.json Procfile dist client \
+            -x "*.env" "*.log" "node_modules/*"
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: admin-customer
+          environment_name: admin-customer-prod
+          version_label: gh-${{ github.run_number }}-${{ github.sha }}
+          region: ap-south-1
+          deployment_package: deploy.zip
+          wait_for_deployment: true
+          wait_for_environment_recovery: 180
