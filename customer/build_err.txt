@@ -1,0 +1,13 @@
+
+> customer@0.0.0 build
+> tsc -b && vite build
+
+src/components/Navbar.tsx(3,38): error TS6133: 'MapPin' is declared but its value is never read.
+src/pages/Cart.tsx(2,30): error TS6133: 'Tag' is declared but its value is never read.
+src/pages/Cart.tsx(44,19): error TS6133: 'disc' is declared but its value is never read.
+src/pages/Orders.tsx(88,77): error TS2322: Type 'string | Date' is not assignable to type 'ReactNode'.
+  Type 'Date' is not assignable to type 'ReactNode'.
+src/pages/ProductDetail.tsx(3,49): error TS6133: 'Truck' is declared but its value is never read.
+src/pages/ProductDetail.tsx(3,56): error TS6133: 'RefreshCw' is declared but its value is never read.
+src/pages/ProductDetail.tsx(3,67): error TS6133: 'Shield' is declared but its value is never read.
+src/pages/Profile.tsx(146,68): error TS2304: Cannot find name 'ShoppingBag'.
