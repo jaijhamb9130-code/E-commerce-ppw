@@ -31,16 +31,6 @@ import { CustomersController } from './customers.controller';
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/public',
     }),
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'client', 'admin'),
-      serveRoot: '/admin',
-      exclude: ['/api/{*splat}', '/auth/{*splat}', '/public/{*splat}'],
-    }),
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'client', 'customer'),
-      serveRoot: '/',
-      exclude: ['/api/{*splat}', '/auth/{*splat}', '/public/{*splat}', '/admin/{*splat}'],
-    }),
     ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
