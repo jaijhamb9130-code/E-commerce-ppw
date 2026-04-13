@@ -1,6 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import * as crypto from 'crypto';
 import { json, urlencoded } from 'express';
+import { join } from 'path';
+import { existsSync } from 'fs';
+import * as express from 'express';
+import { SpaFilter } from './spa.filter';
 
 // Polyfill for Node.js 18/20 where 'crypto' is not globally available for TypeORM
 if (!global.crypto) {
@@ -16,12 +20,21 @@ async function bootstrap() {
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.setGlobalPrefix('api');
     app.enableCors({
-      origin: true, // Allow all origins for production simplicity unless strict security requested
+      origin: true,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
       credentials: true,
     });
+
+    // Serve frontend static files with correct MIME types
+    const customerDir = join(process.cwd(), 'client', 'customer');
+    const adminDir = join(process.cwd(), 'client', 'admin');
+    if (existsSync(customerDir)) app.use(express.static(customerDir));
+    if (existsSync(adminDir)) app.use('/admin', express.static(adminDir));
+
+    // SPA fallback for client-side routing
+    app.useGlobalFilters(new SpaFilter());
+
     const port = process.env.PORT ?? 3000;
-    // Bind to 0.0.0.0 to ensure availability on all interfaces
     await app.listen(port, '0.0.0.0');
     console.log(`Application is running on: http://localhost:${port}`);
     console.log(`Global Prefix: api`);
