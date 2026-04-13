@@ -16,13 +16,22 @@ export class SpaFilter implements ExceptionFilter {
     // Non-API GET request without file extension → serve SPA index.html
     if (request.method === 'GET' && !request.path.startsWith('/api') && !request.path.includes('.')) {
       // Admin routes
-      if (request.path.startsWith('/admin') && existsSync(this.adminIndex)) {
-        return response.sendFile(this.adminIndex);
+      if (request.path.startsWith('/admin')) {
+        console.log('[SpaFilter] admin fallback →', this.adminIndex, 'exists:', existsSync(this.adminIndex));
+        return response.sendFile(this.adminIndex, (err) => {
+          if (err && !response.headersSent) {
+            response.status(404).json({ message: exception.message, error: 'Not Found', statusCode: 404 });
+          }
+        });
       }
       // Customer routes (everything else)
-      if (existsSync(this.customerIndex)) {
-        return response.sendFile(this.customerIndex);
-      }
+      console.log('[SpaFilter] customer fallback →', this.customerIndex, 'exists:', existsSync(this.customerIndex));
+      return response.sendFile(this.customerIndex, (err) => {
+        if (err && !response.headersSent) {
+          console.error('[SpaFilter] sendFile error:', err.message);
+          response.status(404).json({ message: exception.message, error: 'Not Found', statusCode: 404 });
+        }
+      });
     }
 
     // Otherwise return normal 404
