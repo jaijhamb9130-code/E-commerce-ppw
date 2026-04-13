@@ -58,7 +58,7 @@ jobs:
           aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           application_name: admin-customer
-          environment_name: admin-customer-prod
+          environment_name: admin-customer-v2
           version_label: gh-${{ github.run_number }}-${{ github.sha }}
           region: ap-south-1
           deployment_package: deploy.zip
