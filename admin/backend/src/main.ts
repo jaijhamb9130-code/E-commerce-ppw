@@ -1,3 +1,5 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
 import { NestFactory } from '@nestjs/core';
 import * as crypto from 'crypto';
 import { json, urlencoded } from 'express';
@@ -24,6 +26,11 @@ async function bootstrap() {
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
       credentials: true,
     });
+
+    // Serve uploaded media (images/videos) from configured uploads path
+    const uploadsPath = require('path').resolve(process.env.UPLOADS_PATH || join(process.cwd(), 'public'));
+    console.log('Serving /public from:', uploadsPath);
+    app.use('/public', express.static(uploadsPath));
 
     // Serve frontend static files with correct MIME types
     const customerDir = join(process.cwd(), 'client', 'customer');

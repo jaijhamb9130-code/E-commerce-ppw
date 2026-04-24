@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ItemDetail } from '../entities/item-detail.entity';
-import { ItemImage } from '../entities/item-image.entity';
+import { ItemMedia } from '../entities/item-media.entity';
 import { StockItem } from '../entities/stock-item.entity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,8 +14,8 @@ export class ItemDetailsService {
   constructor(
     @InjectRepository(ItemDetail)
     private detailRepo: Repository<ItemDetail>,
-    @InjectRepository(ItemImage)
-    private imageRepo: Repository<ItemImage>,
+    @InjectRepository(ItemMedia)
+    private mediaRepo: Repository<ItemMedia>,
     @InjectRepository(StockItem)
     private stockItemRepo: Repository<StockItem>,
   ) {
@@ -25,13 +25,51 @@ export class ItemDetailsService {
     }
   }
 
+  private fileUrl(urlName: string, slot: string): string {
+    return slot.startsWith('vid')
+      ? `public/uploads/items/videos/${urlName}.webm`
+      : `public/uploads/items/${urlName}.webp`;
+  }
+
   async getDetails(masterid: string) {
     const detail = await this.detailRepo.findOne({ where: { masterid } });
-    const images = await this.imageRepo.find({
+    const rawMedia = await this.mediaRepo.find({
       where: { masterid },
-      order: { image_slot: 'ASC' },
+      order: { slot: 'ASC' },
     });
-    return { detail, images };
+    const images = rawMedia
+      .filter(m => m.type === 'image')
+      .map(m => ({
+        id: m.id,
+        masterid: m.masterid,
+        image_slot: parseInt(m.slot.replace('img', '')) || 1,
+        image_url: this.fileUrl(m.url_name, m.slot),
+      }));
+    const videos = rawMedia
+      .filter(m => m.type === 'video')
+      .map(m => ({
+        id: m.id,
+        masterid: m.masterid,
+        slot: m.slot,
+        video_url: this.fileUrl(m.url_name, m.slot),
+      }));
+    return { details: detail, images, videos };
+  }
+
+  async getThumbnails(masterids: string[]): Promise<Record<string, string>> {
+    if (!masterids.length) return {};
+    const rows = await this.mediaRepo
+      .createQueryBuilder('m')
+      .where('m.masterid IN (:...ids) AND m.type = :type', { ids: masterids, type: 'image' })
+      .orderBy('m.slot', 'ASC')
+      .getMany();
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      if (!result[row.masterid]) {
+        result[row.masterid] = `/${this.fileUrl(row.url_name, row.slot)}`;
+      }
+    }
+    return result;
   }
 
   async saveDetails(
@@ -61,64 +99,16 @@ export class ItemDetailsService {
     }
     await this.detailRepo.save(detail);
 
-    // 2. Remove images for removed slots
-    for (const slot of removedSlots) {
-      const existing = await this.imageRepo.findOne({
-        where: { masterid, image_slot: slot },
-      });
-      if (existing) {
-        // Delete actual file
-        const filePath = path.join(process.cwd(), existing.image_url);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-        await this.imageRepo.remove(existing);
-      }
-    }
-
-    // 3. Save new images
-    for (const { slot, file } of files) {
-      // Remove old image in this slot if any
-      const existing = await this.imageRepo.findOne({
-        where: { masterid, image_slot: slot },
-      });
-      if (existing) {
-        const oldPath = path.join(process.cwd(), existing.image_url);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
-        await this.imageRepo.remove(existing);
-      }
-
-      // Save new file
-      const ext = path.extname(file.originalname);
-      const fileName = `${masterid}_slot${slot}_${Date.now()}${ext}`;
-      const filePath = path.join(this.uploadDir, fileName);
-      fs.writeFileSync(filePath, file.buffer);
-
-      const imageRecord = this.imageRepo.create({
-        masterid,
-        image_slot: slot,
-        image_url: `public/uploads/items/${fileName}`,
-        original_name: file.originalname,
-        uploaded_by: userId,
-      });
-      await this.imageRepo.save(imageRecord);
-    }
-
     return this.getDetails(masterid);
   }
 
   async deleteImage(masterid: string, slot: number) {
-    const existing = await this.imageRepo.findOne({
-      where: { masterid, image_slot: slot },
-    });
+    const slotStr = `img${slot}`;
+    const existing = await this.mediaRepo.findOne({ where: { masterid, slot: slotStr } });
     if (existing) {
-      const filePath = path.join(process.cwd(), existing.image_url);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      await this.imageRepo.remove(existing);
+      const filePath = path.join(process.cwd(), this.fileUrl(existing.url_name, existing.slot));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await this.mediaRepo.remove(existing);
     }
     return { success: true };
   }

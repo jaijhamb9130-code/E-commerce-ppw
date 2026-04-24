@@ -73,11 +73,16 @@ export default function ProductDetail() {
     mrp: product.mrp,
     quantity: qty,
     unit: product.unit ?? 'pcs',
-    image: extraData?.images?.[0]?.image_url
+    image: extraData?.images?.[0] ? `/${extraData.images[0].image_url}` : undefined
   });
   const buyNow    = () => { if (!inCart) addToCart(); navigate('/cart'); };
 
   const images = extraData?.images || [];
+  const videos = extraData?.videos || [];
+  const allMedia: { id: number; type: 'image' | 'video'; url: string }[] = [
+    ...images.map(img => ({ id: img.id, type: 'image' as const, url: `/${img.image_url}` })),
+    ...videos.map(vid => ({ id: vid.id, type: 'video' as const, url: `/${vid.video_url}` })),
+  ];
   const description = extraData?.details?.description || 'No description available for this product.';
   const highlights = [
     `Brand: ${brand || 'General'}`,
@@ -101,33 +106,49 @@ export default function ProductDetail() {
       <div className="rounded-3xl p-5 md:p-8" style={{ background: 'white', border: '1.5px solid #E8E8E8' }}>
         <div className="flex flex-col md:flex-row gap-8">
 
-          {/* Image Section */}
-          <div className="md:w-80 flex-shrink-0">
-            <div className="aspect-square rounded-2xl flex items-center justify-center overflow-hidden relative"
-              style={{ background: '#F8F8F8', border: '1px solid #E8E8E8' }}>
-              {images.length > 0 ? (
-                <img 
-                  src={`/${images[activeImg].image_url}`} 
-                  alt={product.name} 
-                  className="w-full h-full object-contain p-4"
-                />
+          {/* Media Section */}
+          <div className="md:w-72 flex-shrink-0">
+            <div className="rounded-2xl flex items-center justify-center overflow-hidden relative"
+              style={{ background: '#F8F8F8', border: '1px solid #E8E8E8', height: '220px' }}>
+              {allMedia.length > 0 ? (
+                allMedia[activeImg].type === 'video' ? (
+                  <video
+                    key={allMedia[activeImg].url}
+                    className="w-full h-full object-cover"
+                    controls
+                    autoPlay
+                    muted
+                    playsInline
+                  >
+                    <source src={allMedia[activeImg].url} type="video/webm" />
+                  </video>
+                ) : (
+                  <img
+                    src={allMedia[activeImg].url}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                )
               ) : (
-                <span className="text-8xl select-none">📦</span>
+                <span className="text-6xl select-none">📦</span>
               )}
-              
             </div>
 
             {/* Thumbnails */}
-            {images.length > 1 && (
+            {allMedia.length > 1 && (
               <div className="flex gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
-                {images.map((img, i) => (
-                  <button 
-                    key={img.id} 
+                {allMedia.map((item, i) => (
+                  <button
+                    key={item.id}
                     onClick={() => setActiveImg(i)}
-                    className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all p-1 ${activeImg === i ? 'border-green-700' : 'border-gray-200'}`}
-                    style={{ background: '#F8F8F8' }}
+                    className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all overflow-hidden ${activeImg === i ? 'border-green-700' : 'border-gray-200'}`}
+                    style={{ background: '#1a1a1a' }}
                   >
-                    <img src={`/${img.image_url}`} className="w-full h-full object-contain" alt="" />
+                    {item.type === 'video' ? (
+                      <div className="w-full h-full flex items-center justify-center text-white text-2xl">▶</div>
+                    ) : (
+                      <img src={item.url} className="w-full h-full object-contain" alt="" />
+                    )}
                   </button>
                 ))}
               </div>

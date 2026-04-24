@@ -20,6 +20,12 @@ import { UseGuards } from '@nestjs/common';
 export class ItemDetailsController {
   constructor(private readonly service: ItemDetailsService) {}
 
+  @Get('thumbnails')
+  async getThumbnails(@Query('masterids') masterids: string) {
+    const ids = (masterids || '').split(',').filter(Boolean);
+    return this.service.getThumbnails(ids);
+  }
+
   @Get(':masterid')
   async getDetails(@Param('masterid') masterid: string) {
     return this.service.getDetails(masterid);

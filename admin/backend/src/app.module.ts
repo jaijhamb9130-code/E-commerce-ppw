@@ -2,8 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+
 import { AppController } from './app.controller';
 import { UserController } from './user.controller';
 import { AppService } from './app.service';
@@ -14,7 +13,7 @@ import { OrderDetail } from './entities/order-detail.entity';
 import { User } from './entities/user.entity';
 import { Meta } from './entities/meta.entity';
 import { ItemDetail } from './entities/item-detail.entity';
-import { ItemImage } from './entities/item-image.entity';
+import { ItemMedia } from './entities/item-media.entity';
 import { Customer } from './entities/customer.entity';
 import { Address } from './entities/address.entity';
 import { TallyService } from './tally.service';
@@ -27,10 +26,6 @@ import { CustomersController } from './customers.controller';
   imports: [
     AuthModule,
     ItemDetailsModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'public'),
-      serveRoot: '/public',
-    }),
     ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
@@ -44,7 +39,7 @@ import { CustomersController } from './customers.controller';
         username: configService.get<string>('DB_USERNAME', 'root'),
         password: configService.get<string>('DB_PASSWORD', ''),
         database: configService.get<string>('DB_NAME', 'tally_sync'),
-        entities: [Ledger, StockItem, Order, OrderDetail, User, Meta, ItemDetail, ItemImage, Customer, Address],
+        entities: [Ledger, StockItem, Order, OrderDetail, User, Meta, ItemDetail, ItemMedia, Customer, Address],
         synchronize: process.env.DB_SYNC === 'true', // OFF in prod. Set DB_SYNC=true only for a one-off boot if you need schema sync.
       }),
       inject: [ConfigService],
@@ -57,7 +52,6 @@ import { CustomersController } from './customers.controller';
       User,
       Meta,
       ItemDetail,
-      ItemImage,
       Customer,
       Address
     ]),

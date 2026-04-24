@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard, { type Product } from '../components/ProductCard';
-import { fetchProducts, transformStockItemToProduct, fetchBrands, fetchCategories } from '../api';
+import { fetchProducts, transformStockItemToProduct, fetchBrands, fetchCategories, fetchThumbnails } from '../api';
 
 const SORT_OPTIONS = [
   { label: 'Relevance',          value: 'relevance' },
@@ -54,8 +54,14 @@ export default function Products() {
           brands:     [...selectedBrands],
           categories: [...selectedCategories],
         });
-        setProducts(res.data.map(transformStockItemToProduct));
+        const mapped = res.data.map(transformStockItemToProduct);
         setTotalPages(res.pagination.totalPages);
+        // Attach thumbnails in background — don't block render
+        setProducts(mapped);
+        const masterids = res.data.map(i => i.masterid).filter(Boolean) as string[];
+        fetchThumbnails(masterids).then(thumbs => {
+          setProducts(prev => prev.map(p => p.masterid && thumbs[p.masterid] ? { ...p, image: thumbs[p.masterid] } : p));
+        });
       } catch (e) {
         console.error('Failed to fetch products:', e);
       } finally {

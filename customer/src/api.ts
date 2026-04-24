@@ -48,9 +48,24 @@ export interface ItemImage {
   image_url: string; // The relative path in the backend's public dir
 }
 
+export interface MediaImage {
+  id: number;
+  masterid: string;
+  image_slot: number;
+  image_url: string;
+}
+
+export interface MediaVideo {
+  id: number;
+  masterid: string;
+  slot: string;
+  video_url: string;
+}
+
 export interface FullItemDetail {
   details?: ItemDetail;
-  images?: ItemImage[];
+  images?: MediaImage[];
+  videos?: MediaVideo[];
 }
 
 import type { Product } from './components/ProductCard';
@@ -136,6 +151,16 @@ export const fetchCategories = async (search: string = '', brand: string = ''): 
   const { data } = await api.get('/stock-items/categories', { params: { search, brand } });
   // Filter out placeholder/empty Tally values
   return (data as string[]).filter(c => c && c.toLowerCase() !== 'not applicable');
+};
+
+export const fetchThumbnails = async (masterids: string[]): Promise<Record<string, string>> => {
+  if (!masterids.length) return {};
+  try {
+    const { data } = await api.get('/item-details/thumbnails', { params: { masterids: masterids.join(',') } });
+    return data;
+  } catch {
+    return {};
+  }
 };
 
 export const fetchProductDetail = async (masterid: string): Promise<FullItemDetail> => {
