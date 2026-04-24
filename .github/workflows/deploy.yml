@@ -104,20 +104,9 @@ jobs:
             --output text 2>/dev/null)
           if [ -n "$LOGS" ] && [ "$LOGS" != "None" ]; then
             echo "Downloading log bundle: $LOGS"
-            curl -s "$LOGS" -o eb_logs.zip
-            unzip -o eb_logs.zip -d eb_logs/ 2>/dev/null || true
-            echo "===== FILES IN BUNDLE ====="
-            find eb_logs/ -type f | sort
-            echo "===== nodejs.log (AL2023 Node platform) ====="
-            cat eb_logs/var/log/nodejs/nodejs.log 2>/dev/null | tail -60 || echo "(not found)"
-            echo "===== web.stdout.log ====="
-            cat eb_logs/var/log/web.stdout.log 2>/dev/null | tail -60 || echo "(not found)"
-            echo "===== eb-engine.log ====="
-            cat eb_logs/var/log/eb-engine.log 2>/dev/null | tail -40 || echo "(not found)"
-            echo "===== nginx/error.log ====="
-            cat eb_logs/var/log/nginx/error.log 2>/dev/null | tail -20 || echo "(not found)"
-            echo "===== ALL LOG FILES ====="
-            find eb_logs/ -name "*.log" -exec echo "--- {} ---" \; -exec tail -20 {} \;
+            curl -s "$LOGS" -o eb_logs.txt
+            echo "===== EB INSTANCE LOGS (last 200 lines) ====="
+            tail -200 eb_logs.txt
           else
             echo "No log bundle URL available — check EB console manually."
           fi
