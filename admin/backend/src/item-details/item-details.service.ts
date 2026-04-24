@@ -4,12 +4,13 @@ import { Repository } from 'typeorm';
 import { ItemDetail } from '../entities/item-detail.entity';
 import { ItemMedia } from '../entities/item-media.entity';
 import { StockItem } from '../entities/stock-item.entity';
-import * as fs from 'fs';
-import * as path from 'path';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 @Injectable()
 export class ItemDetailsService {
-  private uploadDir: string;
+  private s3: S3Client;
+  private bucket: string;
+  private region: string;
 
   constructor(
     @InjectRepository(ItemDetail)
@@ -19,16 +20,19 @@ export class ItemDetailsService {
     @InjectRepository(StockItem)
     private stockItemRepo: Repository<StockItem>,
   ) {
-    this.uploadDir = path.join(process.cwd(), 'public', 'uploads', 'items');
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
+    this.region = process.env.AWS_REGION || 'ap-south-1';
+    this.bucket = process.env.S3_BUCKET_NAME!;
+    this.s3 = new S3Client({ region: this.region });
   }
 
-  private fileUrl(urlName: string, slot: string): string {
+  private s3Key(urlName: string, slot: string): string {
     return slot.startsWith('vid')
-      ? `public/uploads/items/videos/${urlName}.webm`
-      : `public/uploads/items/${urlName}.webp`;
+      ? `uploads/items/videos/${urlName}.webm`
+      : `uploads/items/${urlName}.webp`;
+  }
+
+  private s3Url(urlName: string, slot: string): string {
+    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${this.s3Key(urlName, slot)}`;
   }
 
   async getDetails(masterid: string) {
@@ -38,20 +42,20 @@ export class ItemDetailsService {
       order: { slot: 'ASC' },
     });
     const images = rawMedia
-      .filter(m => m.type === 'image')
-      .map(m => ({
+      .filter((m) => m.type === 'image')
+      .map((m) => ({
         id: m.id,
         masterid: m.masterid,
         image_slot: parseInt(m.slot.replace('img', '')) || 1,
-        image_url: this.fileUrl(m.url_name, m.slot),
+        image_url: this.s3Url(m.url_name, m.slot),
       }));
     const videos = rawMedia
-      .filter(m => m.type === 'video')
-      .map(m => ({
+      .filter((m) => m.type === 'video')
+      .map((m) => ({
         id: m.id,
         masterid: m.masterid,
         slot: m.slot,
-        video_url: this.fileUrl(m.url_name, m.slot),
+        video_url: this.s3Url(m.url_name, m.slot),
       }));
     return { details: detail, images, videos };
   }
@@ -66,50 +70,87 @@ export class ItemDetailsService {
     const result: Record<string, string> = {};
     for (const row of rows) {
       if (!result[row.masterid]) {
-        result[row.masterid] = `/${this.fileUrl(row.url_name, row.slot)}`;
+        result[row.masterid] = this.s3Url(row.url_name, row.slot);
       }
     }
     return result;
+  }
+
+  private async deleteFromS3(urlName: string, slot: string): Promise<void> {
+    try {
+      await this.s3.send(new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: this.s3Key(urlName, slot),
+      }));
+    } catch { /* ignore missing */ }
   }
 
   async saveDetails(
     masterid: string,
     description: string,
     userId: number,
-    files: { slot: number; file: Express.Multer.File }[],
-    removedSlots: number[],
+    files: { slot: string; file: Express.Multer.File }[],
+    removedSlots: string[],
     name?: string,
   ) {
-    // 0. Update the StockItem name if provided
     if (name) {
       await this.stockItemRepo.update({ masterid }, { name });
     }
 
-    // 1. Upsert description
     let detail = await this.detailRepo.findOne({ where: { masterid } });
     if (detail) {
       detail.description = description;
       detail.updated_by = userId;
     } else {
-      detail = this.detailRepo.create({
-        masterid,
-        description,
-        updated_by: userId,
-      });
+      detail = this.detailRepo.create({ masterid, description, updated_by: userId });
     }
     await this.detailRepo.save(detail);
+
+    for (const slot of removedSlots) {
+      await this.deleteMedia(masterid, slot);
+    }
+
+    const stockItem = await this.stockItemRepo.findOne({ where: { masterid } });
+    const nameCode = stockItem?.name?.match(/^(\S+)/)?.[1];
+    const code = stockItem?.ats_barcode || nameCode || masterid;
+
+    for (const { slot, file } of files) {
+      const existing = await this.mediaRepo.findOne({ where: { masterid, slot } });
+      if (existing) {
+        await this.deleteFromS3(existing.url_name, slot);
+        await this.mediaRepo.remove(existing);
+      }
+
+      const urlName = `${code}${slot}`;
+      const key = this.s3Key(urlName, slot);
+      const contentType = slot.startsWith('vid') ? 'video/webm' : 'image/webp';
+
+      await this.s3.send(new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: contentType,
+      }));
+
+      const type = slot.startsWith('vid') ? 'video' : 'image';
+      await this.mediaRepo.save(
+        this.mediaRepo.create({ masterid, slot, type, url_name: urlName, uploaded_by: userId }),
+      );
+    }
 
     return this.getDetails(masterid);
   }
 
-  async deleteImage(masterid: string, slot: number) {
-    const slotStr = `img${slot}`;
-    const existing = await this.mediaRepo.findOne({ where: { masterid, slot: slotStr } });
+  async deleteMedia(masterid: string, slot: string) {
+    const existing = await this.mediaRepo.findOne({ where: { masterid, slot } });
     if (existing) {
-      const filePath = path.join(process.cwd(), this.fileUrl(existing.url_name, existing.slot));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await this.deleteFromS3(existing.url_name, slot);
       await this.mediaRepo.remove(existing);
     }
     return { success: true };
+  }
+
+  async deleteImage(masterid: string, slot: number) {
+    return this.deleteMedia(masterid, `img${slot}`);
   }
 }

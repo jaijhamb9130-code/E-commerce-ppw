@@ -65,6 +65,8 @@ export default function ProductDetail() {
   const inCart    = isInCart(Number(id));
   const cartQty   = getQty(Number(id));
 
+  const toUrl = (u: string) => u.startsWith('http') ? u : `/${u}`;
+
   const addToCart = () => addItem({
     productId: Number(id),
     masterid: product.masterid,
@@ -73,15 +75,15 @@ export default function ProductDetail() {
     mrp: product.mrp,
     quantity: qty,
     unit: product.unit ?? 'pcs',
-    image: extraData?.images?.[0] ? `/${extraData.images[0].image_url}` : undefined
+    image: extraData?.images?.[0] ? toUrl(extraData.images[0].image_url) : undefined
   });
   const buyNow    = () => { if (!inCart) addToCart(); navigate('/cart'); };
 
   const images = extraData?.images || [];
   const videos = extraData?.videos || [];
   const allMedia: { id: number; type: 'image' | 'video'; url: string }[] = [
-    ...images.map(img => ({ id: img.id, type: 'image' as const, url: `/${img.image_url}` })),
-    ...videos.map(vid => ({ id: vid.id, type: 'video' as const, url: `/${vid.video_url}` })),
+    ...images.map(img => ({ id: img.id, type: 'image' as const, url: toUrl(img.image_url) })),
+    ...videos.map(vid => ({ id: vid.id, type: 'video' as const, url: toUrl(vid.video_url) })),
   ];
   const description = extraData?.details?.description || 'No description available for this product.';
   const highlights = [
