@@ -62,6 +62,7 @@ jobs:
           version_label: gh-${{ github.run_number }}-${{ github.sha }}
           region: ap-south-1
           deployment_package: deploy.zip
+          use_existing_version_if_available: true
           wait_for_deployment: true
           wait_for_environment_recovery: 0
 
