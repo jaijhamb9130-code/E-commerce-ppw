@@ -68,7 +68,6 @@ jobs:
           wait_for_environment_recovery: 0
 
       - name: Verify app is responding
-        continue-on-error: true
         run: |
           sleep 20
           URL="http://admin-customer-live.eba-ppzifyfu.ap-south-1.elasticbeanstalk.com/api/auth/login"
@@ -84,29 +83,3 @@ jobs:
           done
           echo "App did not respond with expected status."
           exit 1
-
-      - name: Fetch EB startup logs (diagnose crashes)
-        if: always()
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ap-south-1
-        run: |
-          echo "Requesting last-100 log tail from EB..."
-          aws elasticbeanstalk request-environment-info \
-            --environment-name admin-customer-live \
-            --info-type tail 2>&1 || echo "request-environment-info failed"
-          sleep 15
-          LOGS=$(aws elasticbeanstalk retrieve-environment-info \
-            --environment-name admin-customer-live \
-            --info-type tail \
-            --query 'EnvironmentInfo[0].Message' \
-            --output text 2>/dev/null)
-          if [ -n "$LOGS" ] && [ "$LOGS" != "None" ]; then
-            echo "Downloading log bundle: $LOGS"
-            curl -s "$LOGS" -o eb_logs.txt
-            echo "===== EB INSTANCE LOGS (last 200 lines) ====="
-            tail -200 eb_logs.txt
-          else
-            echo "No log bundle URL available — check EB console manually."
-          fi
