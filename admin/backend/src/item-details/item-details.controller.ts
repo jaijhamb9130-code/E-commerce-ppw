@@ -31,8 +31,7 @@ export class ItemDetailsController {
     return this.service.getDetails(masterid);
   }
 
-  @UseGuards(AuthGuard('jwt'), PermissionsGuard)
-  @RequirePermission('inventory')
+  @UseGuards(AuthGuard('jwt'))
   @Post(':masterid')
   @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 100 * 1024 * 1024 } }))
   async saveDetails(
@@ -59,8 +58,7 @@ export class ItemDetailsController {
     return this.service.saveDetails(masterid, description, userId, slottedFiles, removedSlots, name);
   }
 
-  @UseGuards(AuthGuard('jwt'), PermissionsGuard)
-  @RequirePermission('inventory')
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':masterid/media/:slot')
   async deleteMedia(
     @Param('masterid') masterid: string,
@@ -69,8 +67,7 @@ export class ItemDetailsController {
     return this.service.deleteMedia(masterid, slot);
   }
 
-  @UseGuards(AuthGuard('jwt'), PermissionsGuard)
-  @RequirePermission('inventory')
+  @UseGuards(AuthGuard('jwt'))
   @Delete(':masterid/image/:slot')
   async deleteImage(
     @Param('masterid') masterid: string,
