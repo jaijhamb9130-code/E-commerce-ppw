@@ -112,7 +112,7 @@ export class ItemDetailsService {
 
     const stockItem = await this.stockItemRepo.findOne({ where: { masterid } });
     const nameCode = stockItem?.name?.match(/^(\S+)/)?.[1];
-    const code = stockItem?.ats_barcode || nameCode || masterid;
+    const code = nameCode || masterid;
 
     for (const { slot, file } of files) {
       const existing = await this.mediaRepo.findOne({ where: { masterid, slot } });
