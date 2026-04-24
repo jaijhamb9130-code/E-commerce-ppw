@@ -1,5 +1,3 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
 import { NestFactory } from '@nestjs/core';
 import * as crypto from 'crypto';
 import { json, urlencoded } from 'express';
