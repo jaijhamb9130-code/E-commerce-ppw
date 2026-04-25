@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import api from '../api';
 import { Lock, User, ArrowRight } from 'lucide-react';
+import { getDefaultRoute } from '../utils';
 
 const copper = '#b8804a';
 const copperDark = '#9a6a3c';
@@ -24,7 +25,7 @@ export default function Login() {
             const { access_token, user } = response.data;
             if (user) localStorage.setItem('user', JSON.stringify(user));
             localStorage.setItem('token', access_token);
-            window.location.href = '/admin/';
+            window.location.href = '/admin' + getDefaultRoute(user);
         } catch (err: any) {
             setError(err.response?.data?.message || 'Invalid username or password');
         } finally {
