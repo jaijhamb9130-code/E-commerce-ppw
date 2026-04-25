@@ -1,16 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { Response } from 'express';
+import { Readable } from 'stream';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ItemDetail } from '../entities/item-detail.entity';
 import { ItemMedia } from '../entities/item-media.entity';
 import { StockItem } from '../entities/stock-item.entity';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
 
 @Injectable()
 export class ItemDetailsService {
+  private readonly logger = new Logger(ItemDetailsService.name);
   private s3: S3Client;
   private bucket: string;
   private region: string;
+  private localMediaRoot: string;
 
   constructor(
     @InjectRepository(ItemDetail)
@@ -21,8 +32,16 @@ export class ItemDetailsService {
     private stockItemRepo: Repository<StockItem>,
   ) {
     this.region = process.env.AWS_REGION || 'ap-south-1';
-    this.bucket = process.env.S3_BUCKET_NAME!;
+    this.bucket = process.env.S3_BUCKET_NAME || '';
+    if (!this.bucket) {
+      this.logger.error(
+        'S3_BUCKET_NAME is not set — uploads will fail. Set the env var on your deploy target.',
+      );
+    }
     this.s3 = new S3Client({ region: this.region });
+    this.localMediaRoot = path.resolve(
+      process.env.UPLOADS_PATH || path.join(process.cwd(), 'public'),
+    );
   }
 
   private s3Key(urlName: string, slot: string): string {
@@ -31,11 +50,24 @@ export class ItemDetailsService {
       : `uploads/items/${urlName}.webp`;
   }
 
-  private s3Url(urlName: string, slot: string): string {
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${this.s3Key(urlName, slot)}`;
+  private mediaProxyPath(urlName: string, slot: string): string {
+    return slot.startsWith('vid')
+      ? `/api/media/items/videos/${urlName}.webm`
+      : `/api/media/items/${urlName}.webp`;
   }
 
-  async getDetails(masterid: string) {
+  private buildMediaUrl(
+    baseUrl: string | undefined,
+    urlName: string,
+    slot: string,
+  ): string {
+    const proxyPath = this.mediaProxyPath(urlName, slot);
+    const explicit = (process.env.BACKEND_PUBLIC_URL || '').replace(/\/$/, '');
+    const base = (baseUrl || explicit || '').replace(/\/$/, '');
+    return base ? `${base}${proxyPath}` : proxyPath;
+  }
+
+  async getDetails(masterid: string, baseUrl?: string) {
     const detail = await this.detailRepo.findOne({ where: { masterid } });
     const rawMedia = await this.mediaRepo.find({
       where: { masterid },
@@ -47,7 +79,7 @@ export class ItemDetailsService {
         id: m.id,
         masterid: m.masterid,
         image_slot: parseInt(m.slot.replace('img', '')) || 1,
-        image_url: this.s3Url(m.url_name, m.slot),
+        image_url: this.buildMediaUrl(baseUrl, m.url_name, m.slot),
       }));
     const videos = rawMedia
       .filter((m) => m.type === 'video')
@@ -55,12 +87,15 @@ export class ItemDetailsService {
         id: m.id,
         masterid: m.masterid,
         slot: m.slot,
-        video_url: this.s3Url(m.url_name, m.slot),
+        video_url: this.buildMediaUrl(baseUrl, m.url_name, m.slot),
       }));
     return { details: detail, images, videos };
   }
 
-  async getThumbnails(masterids: string[]): Promise<Record<string, string>> {
+  async getThumbnails(
+    masterids: string[],
+    baseUrl?: string,
+  ): Promise<Record<string, string>> {
     if (!masterids.length) return {};
     const rows = await this.mediaRepo
       .createQueryBuilder('m')
@@ -70,10 +105,50 @@ export class ItemDetailsService {
     const result: Record<string, string> = {};
     for (const row of rows) {
       if (!result[row.masterid]) {
-        result[row.masterid] = this.s3Url(row.url_name, row.slot);
+        result[row.masterid] = this.buildMediaUrl(baseUrl, row.url_name, row.slot);
       }
     }
     return result;
+  }
+
+  async streamMedia(
+    s3Key: string,
+    res: Response,
+    contentType: string,
+  ): Promise<void> {
+    if (this.bucket) {
+      try {
+        const obj = await this.s3.send(
+          new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }),
+        );
+        res.setHeader('Content-Type', obj.ContentType || contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+        if (obj.ContentLength) {
+          res.setHeader('Content-Length', String(obj.ContentLength));
+        }
+        if (obj.ETag) res.setHeader('ETag', obj.ETag);
+        if (obj.Body instanceof Readable) {
+          obj.Body.pipe(res);
+          return;
+        }
+      } catch (err: any) {
+        const code = err?.name || err?.Code;
+        if (code !== 'NoSuchKey' && code !== 'NotFound' && code !== 'AccessDenied') {
+          this.logger.warn(`S3 stream failed for ${s3Key}: ${err?.message || err}`);
+        }
+      }
+    }
+
+    const localPath = path.join(this.localMediaRoot, s3Key);
+    if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('Content-Length', String(fs.statSync(localPath).size));
+      fs.createReadStream(localPath).pipe(res);
+      return;
+    }
+
+    res.status(404).send('Media not found');
   }
 
   private async deleteFromS3(urlName: string, slot: string): Promise<void> {
@@ -92,6 +167,7 @@ export class ItemDetailsService {
     files: { slot: string; file: Express.Multer.File }[],
     removedSlots: string[],
     name?: string,
+    baseUrl?: string,
   ) {
     if (name) {
       await this.stockItemRepo.update({ masterid }, { name });
@@ -138,7 +214,7 @@ export class ItemDetailsService {
       );
     }
 
-    return this.getDetails(masterid);
+    return this.getDetails(masterid, baseUrl);
   }
 
   async deleteMedia(masterid: string, slot: string) {

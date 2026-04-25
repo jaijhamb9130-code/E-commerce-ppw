@@ -16,6 +16,8 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   try {
     const app = await NestFactory.create(AppModule);
+    const expressInstance = app.getHttpAdapter().getInstance();
+    expressInstance.set('trust proxy', 1);
     app.use(json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.setGlobalPrefix('api');
