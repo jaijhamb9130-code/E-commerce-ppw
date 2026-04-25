@@ -16,7 +16,6 @@ import { InstallPWA } from './components/InstallPWA';
 const copper = '#b8804a';
 const cream = '#f7f0e8';
 
-import { ProfileHeader } from './components/ProfileHeader';
 import { getDefaultRoute } from './utils';
 
 function AuthGuard({ children, permission }: { children: React.ReactElement, permission?: string }) {
@@ -118,8 +117,7 @@ function Layout() {
           boxShadow: '0 0 40px rgba(184,128,74,0.08)',
         }}
       >
-        {!hideNav && <ProfileHeader />}
-        <main className={`relative z-10 w-full flex-1 ${!hideNav ? 'pt-16 pb-12' : ''}`}>
+        <main className={`relative z-10 w-full flex-1 ${!hideNav ? 'pb-12' : ''}`}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<AuthGuard permission="dashboard"><Dashboard /></AuthGuard>} />
