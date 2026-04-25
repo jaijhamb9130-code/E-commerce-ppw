@@ -17,6 +17,7 @@ const copper = '#b8804a';
 const cream = '#f7f0e8';
 
 import { getDefaultRoute } from './utils';
+import { ProfileHeader } from './components/ProfileHeader';
 
 function AuthGuard({ children, permission }: { children: React.ReactElement, permission?: string }) {
   const userStr = localStorage.getItem('user');
@@ -117,6 +118,9 @@ function Layout() {
           boxShadow: '0 0 40px rgba(184,128,74,0.08)',
         }}
       >
+        {/* Profile button — fixed top-right, only for staff users (non-admin) on non-login pages */}
+        {!isAdmin && location.pathname !== '/login' && user?.username && <ProfileHeader />}
+
         <main className={`relative z-10 w-full flex-1 ${!hideNav ? 'pb-12' : ''}`}>
           <Routes>
             <Route path="/login" element={<Login />} />
