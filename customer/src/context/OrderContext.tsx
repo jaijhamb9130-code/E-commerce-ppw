@@ -32,11 +32,12 @@ interface OrderContextType {
 const OrderContext = createContext<OrderContextType | null>(null);
 
 export function OrderProvider({ children }: { children: ReactNode }) {
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchOrders = async () => {
+    if (authLoading) return; // wait for auth to restore from localStorage
     if (!isLoggedIn || !user?.phone) {
       setOrders([]);
       return;
@@ -74,7 +75,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchOrders();
-  }, [isLoggedIn, user?.phone]);
+  }, [isLoggedIn, user?.phone, authLoading]);
 
   const placeOrder = (newOrder: Order) => {
     // Add to top of existing list locally for immediate feedback
