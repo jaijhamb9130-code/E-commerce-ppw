@@ -184,7 +184,7 @@ function Layout() {
     return () => clearInterval(interval);
   }, [location, showNapModal]);
 
-  const hideNav = location.pathname === '/login';
+  const hideNav = location.pathname === '/login' || location.pathname === '/online-orders';
   const user = getUser();
   const isAdmin = user?.role === 'admin';
   const isLoggedIn = !!user?.username;
