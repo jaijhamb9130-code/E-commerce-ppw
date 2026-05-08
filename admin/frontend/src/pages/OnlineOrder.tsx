@@ -295,13 +295,18 @@ export default function OnlineOrder() {
                                 border: '1px solid rgba(184,128,74,0.15)',
                             }}
                         />
-                        <input
-                            type="date"
-                            className="h-[36px] px-2 rounded-xl text-[11px] font-bold outline-none flex-shrink-0"
-                            style={{ background: '#fff', color: '#2c1e0f', border: '1px solid rgba(184,128,74,0.15)', width: '130px' }}
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                        />
+                        <label
+                            className="h-[36px] px-2.5 rounded-xl flex items-center gap-1.5 cursor-pointer flex-shrink-0 relative overflow-hidden"
+                            style={{ background: '#fff', color: '#2c1e0f', border: '1px solid rgba(184,128,74,0.15)', width: '160px' }}
+                        >
+                            <Calendar size={14} style={{ color: '#8d5838', opacity: 0.8 }} className="flex-shrink-0" />
+                            <input
+                                type="date"
+                                className="bg-transparent outline-none text-[12px] font-bold cursor-pointer flex-1 min-w-0 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                            />
+                        </label>
                     </div>
                 )}
             </div>

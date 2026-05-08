@@ -228,24 +228,25 @@ export default function OrderReport() {
                             >
                                 Today
                             </button>
-                            <div className="flex items-center flex-1 min-w-0 pr-1">
+                            <label className="flex items-center flex-1 min-w-0 pr-1 gap-1.5 cursor-pointer relative overflow-hidden">
+                                <Calendar size={14} style={{ color: '#8d5838', opacity: 0.8 }} className="flex-shrink-0" />
                                 <input
                                     type="date"
-                                    className="bg-transparent text-[11px] font-bold outline-none w-full"
+                                    className="bg-transparent text-[12px] font-bold outline-none w-full cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                                     style={{ color: '#2c1e0f' }}
                                     value={selectedDate}
                                     onChange={(e) => updateDate(e.target.value)}
                                 />
                                 {selectedDate && (
                                     <button
-                                        onClick={() => updateDate('')}
-                                        className="ml-1 p-1 rounded-full transition-colors"
+                                        onClick={(e) => { e.preventDefault(); updateDate(''); }}
+                                        className="ml-1 p-1 rounded-full transition-colors flex-shrink-0 relative z-10"
                                         style={{ color: '#a8a29e' }}
                                     >
                                         <X size={12} />
                                     </button>
                                 )}
-                            </div>
+                            </label>
                         </div>
                     )}
 
