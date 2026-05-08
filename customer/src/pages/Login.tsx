@@ -81,26 +81,60 @@ export default function AuthPage() {
     await new Promise(r => setTimeout(r, 800));
     if (otp.join('').length < 6)  { setError('Enter all 6 digits.'); setLoading(false); return; }
     if (otp.join('') !== mockOtp) { setError('Incorrect OTP. Try again.'); setLoading(false); return; }
-    
+
     try {
-        const phone = otpFor === 'signin' ? siPhone : su.phone;
-        const name = otpFor === 'signin' ? '' : su.name;
-        const shopName = otpFor === 'signin' ? '' : su.shopName;
-        
-        const response = await api.post('/customers/sync', { phone, name, shopName });
-        const customer = response.data;
-        
-        login('demo_' + Date.now(), { 
-            id: customer.id, 
-            name: customer.name || 'Customer', 
-            email: su.email || '', 
-            phone: customer.phone_number, 
-            shopName: customer.shop_no || '' 
+      if (otpFor === 'signin') {
+        // Sign-In: phone must already be registered. /customers/:phone/profile
+        // returns null when the phone has never been seen — reject in that case
+        // so a fresh number can't sneak in via the Sign-In path.
+        const { data: existing } = await api.get(`/customers/${siPhone}/profile`);
+        if (!existing) {
+          setError('Account not found. Please sign up first.');
+          setLoading(false);
+          return;
+        }
+        login('demo_' + Date.now(), {
+          id: existing.id,
+          name: existing.name || 'Customer',
+          email: existing.email || '',
+          phone: existing.phone_number,
+          shopName: existing.shop_no || '',
         });
-        navigate('/', { state: { justLoggedIn: true } });
-    } catch (err) {
+      } else {
+        // Sign-Up: name + phone + shopName are required (already validated in
+        // handleSignUp); email is optional and only included when provided.
+        // Use /customers/register (create-only) so the sign-up path can never
+        // silently overwrite an existing customer. Backend returns HTTP 409
+        // when the phone is already registered.
+        const body: { phone: string; name: string; shopName: string; email?: string } = {
+          phone: su.phone,
+          name: su.name,
+          shopName: su.shopName,
+        };
+        if (su.email && su.email.trim()) body.email = su.email.trim();
+        const response = await api.post('/customers/register', body);
+        const customer = response.data;
+        login('demo_' + Date.now(), {
+          id: customer.id,
+          name: customer.name || su.name,
+          email: customer.email || su.email || '',
+          phone: customer.phone_number,
+          shopName: customer.shop_no || su.shopName || '',
+        });
+      }
+      navigate('/', { state: { justLoggedIn: true } });
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const apiMsg = err?.response?.data?.message;
+      if (status === 409) {
+        // Phone already registered — guide the user to sign in.
+        setError(apiMsg || 'This phone is already registered. Please sign in instead.');
+      } else if (status === 400) {
+        setError(apiMsg || 'Invalid request. Please check your details.');
+      } else {
         setError('Failed to sync profile. Try again.');
-        setLoading(false);
+      }
+      setLoading(false);
     }
   };
 
