@@ -19,11 +19,13 @@ import { AuthService } from './auth/auth.service';
 import { TallyService } from './tally.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Ledger } from './entities/ledger.entity';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { StockItem } from './entities/stock-item.entity';
 import { Order } from './entities/order.entity';
 import { OrderDetail } from './entities/order-detail.entity';
 import { Meta } from './entities/meta.entity';
+import { Customer } from './entities/customer.entity';
+import { Address } from './entities/address.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { PermissionsGuard } from './auth/permissions.guard';
 import { RequirePermission } from './auth/permissions.decorator';
@@ -44,7 +46,21 @@ export class AppController {
     private orderDetailRepo: Repository<OrderDetail>,
     @InjectRepository(Meta)
     private metaRepo: Repository<Meta>,
+    @InjectRepository(Customer)
+    private customerRepo: Repository<Customer>,
+    @InjectRepository(Address)
+    private addressRepo: Repository<Address>,
   ) {}
+
+  // In-memory rate limit for unauthenticated /orders/online endpoint.
+  // Survives only within a single Node process — sufficient to deter
+  // casual spam without adding a Redis dep. Resets on every restart.
+  private static readonly ONLINE_ORDER_RATE_WINDOW_MS = 60 * 60 * 1000; // 1h
+  private static readonly ONLINE_ORDER_RATE_MAX = 10; // per phone per window
+  private static readonly onlineOrderRateMap = new Map<
+    string,
+    { count: number; windowStart: number }
+  >();
 
   @Get()
   getHello(): string {
@@ -252,51 +268,177 @@ export class AppController {
     return this.ledgerRepo.save(ledger);
   }
 
-  @Post('orders/online') // Public-ish or Key-based for customer app?
+  @Post('orders/online')
+  // Public endpoint (no JWT) — customer app calls this directly.
+  // Hardened: input validation, per-phone rate limit, server-side price lookup
+  // (no client-trusted prices), Customer find-or-create linkage, optional Address linkage.
   async createOnlineOrder(@Body() body: any) {
     try {
-      const { name, phone, address, pincode, city, state, total, items, remark, ledger_id } = body;
+      // 1. Validate body shape (Fix #4, #5: fail fast with HTTP 400 instead of NaN/500)
+      const { name, phone, address, pincode, city, state, items, remark, ledger_id, address_id } =
+        body || {};
+
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        throw new HttpException('name is required', 400);
+      }
+      const phoneStr = phone == null ? '' : String(phone).trim();
+      if (!/^\d{10}$/.test(phoneStr)) {
+        throw new HttpException('phone must be a 10-digit number', 400);
+      }
+      if (!address || typeof address !== 'string' || !address.trim()) {
+        throw new HttpException('address is required', 400);
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        throw new HttpException('items must be a non-empty array', 400);
+      }
+
+      // 2. Per-phone rate limit (Fix #3: deters spam without adding deps).
+      // In-memory only; resets on process restart. For stronger guarantees move to Redis.
+      const now = Date.now();
+      const bucket = AppController.onlineOrderRateMap.get(phoneStr);
+      if (bucket && now - bucket.windowStart < AppController.ONLINE_ORDER_RATE_WINDOW_MS) {
+        if (bucket.count >= AppController.ONLINE_ORDER_RATE_MAX) {
+          throw new HttpException(
+            'Order limit reached for this phone — try again later',
+            429,
+          );
+        }
+        bucket.count += 1;
+      } else {
+        AppController.onlineOrderRateMap.set(phoneStr, { count: 1, windowStart: now });
+      }
+
+      // 3. Validate items + bulk-load StockItems (Fix #2: server-side price lookup)
+      type ItemReq = { masterid: string; quantity: number; unit?: string };
+      const itemReqs: ItemReq[] = [];
+      for (const it of items) {
+        if (!it || typeof it.masterid !== 'string' || !it.masterid.trim()) {
+          throw new HttpException('each item must have a masterid', 400);
+        }
+        const qty = Number(it.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          throw new HttpException(`invalid quantity for ${it.masterid}`, 400);
+        }
+        itemReqs.push({
+          masterid: it.masterid.trim(),
+          quantity: qty,
+          unit: typeof it.unit === 'string' ? it.unit : undefined,
+        });
+      }
+
+      const masterids = Array.from(new Set(itemReqs.map((i) => i.masterid)));
+      const stocks = await this.stockRepo.find({ where: { masterid: In(masterids) } });
+      const stockByMasterid = new Map(stocks.map((s) => [s.masterid, s]));
+
+      type ResolvedDetail = {
+        masterid: string;
+        item_name: string;
+        quantity: number;
+        rate: number;
+        amount: number;
+        unit: string;
+      };
+      const resolved: ResolvedDetail[] = [];
+      let computedTotal = 0;
+      for (const req of itemReqs) {
+        const sk = stockByMasterid.get(req.masterid);
+        if (!sk) {
+          throw new HttpException(`stock item not found: ${req.masterid}`, 400);
+        }
+        if (sk.is_active === false) {
+          throw new HttpException(`item is inactive: ${req.masterid}`, 410);
+        }
+        // Mirror customer/api.ts transformStockItemToProduct: parse leading number
+        // from default_mrp ("50.00/Pcs" -> 50). This keeps server-side price ≡ what
+        // the customer sees on the product page.
+        const mrpMatch = sk.default_mrp ? sk.default_mrp.match(/^([-+]?[0-9]*\.?[0-9]+)/) : null;
+        const rate = mrpMatch ? parseFloat(mrpMatch[1]) : NaN;
+        if (!Number.isFinite(rate) || rate <= 0) {
+          throw new HttpException(`no valid price for ${req.masterid}`, 400);
+        }
+        const amount = +(rate * req.quantity).toFixed(2);
+        computedTotal += amount;
+        resolved.push({
+          masterid: req.masterid,
+          item_name: sk.name,
+          quantity: req.quantity,
+          rate,
+          amount,
+          unit: req.unit || sk.base_units || 'Pcs',
+        });
+      }
+      computedTotal = +computedTotal.toFixed(2);
+
+      // 4. Find-or-create Customer (Fix #1: link order via customer_id)
+      let customer = await this.customerRepo.findOne({ where: { phone_number: phoneStr } });
+      if (!customer) {
+        customer = new Customer();
+        customer.phone_number = phoneStr;
+        customer.name = name.trim();
+        customer = await this.customerRepo.save(customer);
+      }
+
+      // 5. Validate optional address_id belongs to this customer (Fix #1)
+      let resolvedAddressId: number | undefined;
+      if (address_id != null) {
+        const aid = Number(address_id);
+        if (!Number.isInteger(aid) || aid <= 0) {
+          throw new HttpException('address_id must be a positive integer', 400);
+        }
+        const addr = await this.addressRepo.findOne({
+          where: { id: aid, customer_id: customer.id },
+        });
+        if (!addr) {
+          throw new HttpException('address_id does not belong to this customer', 400);
+        }
+        resolvedAddressId = addr.id;
+      }
+
+      // 6. Build order — total_amount is server-computed (NEVER from body.total)
       const order = new Order();
-      order.customer_name = name;
-      order.customer_phone = phone;
+      order.customer_id = customer.id;
+      if (resolvedAddressId !== undefined) order.address_id = resolvedAddressId;
+      order.customer_name = name.trim();
+      order.customer_phone = phoneStr;
       order.customer_address = address;
       order.customer_pincode = pincode;
       order.customer_city = city || '';
       order.customer_state = state;
       order.date = new Date();
-      order.total_amount = total;
+      order.total_amount = computedTotal;
       order.order_type = 'Online Order';
       order.status = 'pending';
       order.source = 'online';
-      order.remark = remark || 'Placed via Customer Portal';
-      
-      // If ledger_id is provided use it, otherwise attempt to save without (requires nullable in DB)
-      if (ledger_id) {
-          order.ledger = { id: ledger_id } as Ledger;
-      }
-      
-      const savedOrder = await this.orderRepo.save(order);
-      
-      if (items && Array.isArray(items)) {
-        for (const item of items) {
-          const detail = new OrderDetail();
-          detail.order = savedOrder;
-          detail.item_name = item.name;
-          detail.quantity = item.quantity;
-          detail.rate = item.price;
-          detail.amount = item.price * item.quantity;
-          if (item.masterid) {
-             detail.stock_item_id = item.masterid;
-          }
-          detail.unit = item.unit || 'Pcs';
-          detail.status = 'pending';
-          await this.orderDetailRepo.save(detail);
+      order.remark =
+        typeof remark === 'string' && remark.trim() ? remark.trim() : 'Placed via Customer Portal';
+      if (ledger_id != null) {
+        const lid = Number(ledger_id);
+        if (Number.isInteger(lid) && lid > 0) {
+          order.ledger = { id: lid } as Ledger;
         }
       }
+
+      const savedOrder = await this.orderRepo.save(order);
+
+      // 7. Save details with server-resolved values
+      for (const r of resolved) {
+        const detail = new OrderDetail();
+        detail.order = savedOrder;
+        detail.item_name = r.item_name;
+        detail.quantity = r.quantity;
+        detail.rate = r.rate;
+        detail.amount = r.amount;
+        detail.stock_item_id = r.masterid;
+        detail.unit = r.unit;
+        detail.status = 'pending';
+        await this.orderDetailRepo.save(detail);
+      }
+
       return savedOrder;
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       console.error('CRITICAL ERROR IN createOnlineOrder:', error);
-      throw error;
+      throw new HttpException('Failed to create order', 500);
     }
   }
 
