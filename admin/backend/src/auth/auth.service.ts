@@ -69,9 +69,13 @@ export class AuthService {
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(userDto.password, salt);
 
+    // Default permissions to [] (strict) when admin doesn't explicitly send any.
+    // The boot-time backfill only touches NULL rows, so this stays empty until
+    // admin ticks boxes via the user-management UI.
     const newUser = this.usersRepository.create({
       ...userDto,
       password: hashedPassword,
+      permissions: userDto.permissions ?? [],
     });
 
     return this.usersRepository.save(newUser);

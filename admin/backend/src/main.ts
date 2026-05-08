@@ -80,6 +80,32 @@ async function runMigrations(app: any) {
     // Tolerate older MySQL without REGEXP_REPLACE — pass 1 already ran.
     console.warn('Migration: customer_id digit-match backfill skipped:', e?.sqlMessage);
   }
+
+  // One-time role-defaults backfill for staff users whose `permissions` is
+  // NULL (never been set). Idempotent: only NULL rows are touched. Admin
+  // users are NEVER touched (they bypass PermissionsGuard anyway). Rows
+  // admin explicitly set to '[]' are also left alone — that's a deliberate
+  // "no permissions" choice we must respect.
+  const roleDefaults: Record<string, string[]> = {
+    manager: ['inventory'],
+    employee: ['orders', 'reports'],
+  };
+  for (const [role, perms] of Object.entries(roleDefaults)) {
+    try {
+      const json = JSON.stringify(perms);
+      const r: any = await ds.query(
+        `UPDATE \`user\` SET permissions = ?
+         WHERE role = ? AND permissions IS NULL`,
+        [json, role],
+      );
+      const affected = r?.affectedRows ?? r?.[1]?.affectedRows ?? 0;
+      if (affected > 0) {
+        console.log(`Migration: backfilled ${affected} ${role}(s) with default permissions ${json}`);
+      }
+    } catch (e: any) {
+      console.error(`Migration: ${role} permissions backfill failed:`, e?.sqlMessage || e?.message);
+    }
+  }
 }
 
 async function bootstrap() {
