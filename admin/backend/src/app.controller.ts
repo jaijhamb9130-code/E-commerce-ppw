@@ -1199,19 +1199,14 @@ export class AppController {
         const hasReportsPerm = role === 'admin' || userPerms.includes('reports');
         const hasOrdersPerm = role === 'admin' || userPerms.includes('orders');
 
+        // Role-specific user_id scoping (NOT date — date is hoisted below so
+        // it applies uniformly to admin/manager/employee/etc.).
         if (role === 'admin') {
-          // If explicit userId passed (clicked from dashboard)
           const filterId = parseInt(userId);
           if (!isNaN(filterId) && filterId > 0) {
             const condition = 'order.created_by = :userIdFilter';
             if (hasWhere) query.andWhere(condition, { userIdFilter: filterId });
             else { query.where(condition, { userIdFilter: filterId }); hasWhere = true; }
-          }
-          
-          if (date) {
-            const condition = 'order.date = :dateFilter';
-            if (hasWhere) query.andWhere(condition, { dateFilter: date });
-            else { query.where(condition, { dateFilter: date }); hasWhere = true; }
           }
         } else if (role === 'employee' && userId) {
           // Employees see ONLY their own UNLESS they have 'reports' or 'orders' permission
@@ -1220,7 +1215,6 @@ export class AppController {
             if (hasWhere) query.andWhere(condition, { userIdScoped: parseInt(userId) });
             else { query.where(condition, { userIdScoped: parseInt(userId) }); hasWhere = true; }
           } else {
-            // If they HAVE permission, they can still filter by userId if passed
             const filterId = parseInt(userId);
             if (!isNaN(filterId) && filterId > 0) {
               const condition = 'order.created_by = :userIdFilter';
@@ -1228,12 +1222,17 @@ export class AppController {
               else { query.where(condition, { userIdFilter: filterId }); hasWhere = true; }
             }
           }
+        }
 
-          if (date) {
-            const dateCondition = 'order.date = :dateScoped';
-            if (hasWhere) query.andWhere(dateCondition, { dateScoped: date });
-            else { query.where(dateCondition, { dateScoped: date }); hasWhere = true; }
-          }
+        // Date filter — applies to ALL roles uniformly. Previously the date
+        // param was only honoured inside the admin and employee branches, so
+        // managers (and any other role) silently ignored ?date=YYYY-MM-DD and
+        // got ALL orders back — the bug visible in the screenshot where
+        // 08-05-2026 returned a 29/4/2026 order.
+        if (date) {
+          const condition = 'order.date = :dateFilter';
+          if (hasWhere) query.andWhere(condition, { dateFilter: date });
+          else { query.where(condition, { dateFilter: date }); hasWhere = true; }
         }
       }
 
