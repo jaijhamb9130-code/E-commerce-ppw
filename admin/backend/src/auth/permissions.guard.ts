@@ -7,25 +7,32 @@ export class PermissionsGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredPermission = this.reflector.getAllAndOverride<string>(PERMISSIONS_KEY, [
+    // Decorator value can be either a single permission string OR an array
+    // (any-of semantics). Backward compatible — old @RequirePermission('x')
+    // calls still work, new @RequirePermission('a','b') accepts EITHER.
+    const required = this.reflector.getAllAndOverride<string | string[]>(PERMISSIONS_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    if (!requiredPermission) {
+    if (!required || (Array.isArray(required) && required.length === 0)) {
       return true;
     }
 
     const { user } = context.switchToHttp().getRequest();
-    
+
     // Admins have all permissions automatically
     if (user && user.role === 'admin') {
       return true;
     }
 
-    const permissions = user?.permissions || [];
-    if (!permissions.includes(requiredPermission)) {
-      throw new ForbiddenException(`Insufficient permission: ${requiredPermission}`);
+    const userPerms: string[] = user?.permissions || [];
+    const requiredList = Array.isArray(required) ? required : [required];
+    const hasAny = requiredList.some((p) => userPerms.includes(p));
+    if (!hasAny) {
+      throw new ForbiddenException(
+        `Insufficient permission. Need one of: ${requiredList.join(', ')}`,
+      );
     }
 
     return true;

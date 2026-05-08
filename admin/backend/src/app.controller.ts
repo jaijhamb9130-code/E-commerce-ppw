@@ -1102,7 +1102,9 @@ export class AppController {
 
   // Orders with pagination
   @UseGuards(AuthGuard('jwt'), PermissionsGuard)
-  @RequirePermission('reports')
+  // 'orders' OR 'reports' — Order Processing role needs the live order list
+  // to actually process orders; pure reporting users can also read it.
+  @RequirePermission('orders', 'reports')
   @Get('reports/orders')
   async getOrders(
     @Query('page') page: string = '1',
@@ -1682,7 +1684,9 @@ export class AppController {
   }
 
   @UseGuards(AuthGuard('jwt'), PermissionsGuard)
-  @RequirePermission('reports')
+  // 'orders' OR 'reports' — listing the customers who placed online orders
+  // is part of the order-processing workflow, not just historical reporting.
+  @RequirePermission('orders', 'reports')
   @Get('reports/customers-online')
   async getOnlineCustomers(
     @Query('page') page: string = '1',
