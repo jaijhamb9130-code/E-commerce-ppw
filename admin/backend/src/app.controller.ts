@@ -62,6 +62,16 @@ export class AppController {
     { count: number; windowStart: number }
   >();
 
+  // Strip non-digits, take last 10. Treats '+91 9999999999', '09999999999',
+  // '999-999-9999' and '9999999999' as the same identity. Returns null when
+  // the input has fewer than 10 digits.
+  static normalizePhone(input: any): string | null {
+    if (input == null) return null;
+    const digits = String(input).replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    return digits.slice(-10);
+  }
+
   @Get()
   getHello(): string {
     return this.appService.getHello();
@@ -281,9 +291,11 @@ export class AppController {
       if (!name || typeof name !== 'string' || !name.trim()) {
         throw new HttpException('name is required', 400);
       }
-      const phoneStr = phone == null ? '' : String(phone).trim();
-      if (!/^\d{10}$/.test(phoneStr)) {
-        throw new HttpException('phone must be a 10-digit number', 400);
+      // Accept any phone format — '+91 9999999999', '09999999999', '999-999-9999' etc.
+      // Stored canonically as 10 digits so identity matches across history.
+      const phoneStr = AppController.normalizePhone(phone);
+      if (!phoneStr) {
+        throw new HttpException('phone must contain at least 10 digits', 400);
       }
       if (!address || typeof address !== 'string' || !address.trim()) {
         throw new HttpException('address is required', 400);
@@ -1270,17 +1282,40 @@ export class AppController {
   }
 
   @Get('orders/customer/:phone')
-  async getOrdersByCustomerPhone(@Param('phone') phone: string) {
-    if (!phone) throw new HttpException('Phone number is required', 400);
+  async getOrdersByCustomerPhone(
+    @Param('phone') phone: string,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
+  ) {
+    // Match by last-10-digit identity so '+91 999...', '0999...', '999-999-9999'
+    // and '9999999999' all resolve to the same customer.
+    const normalized = AppController.normalizePhone(phone);
+    if (!normalized) {
+      throw new HttpException('phone must contain at least 10 digits', 400);
+    }
 
-    const orders = await this.orderRepo.find({
-      where: { customer_phone: phone },
-      relations: ['orderDetails'],
-      order: { date: 'DESC', id: 'DESC' },
-      take: 20,
-    });
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.orderDetails', 'orderDetails')
+      .where('order.customer_phone = :exact OR order.customer_phone LIKE :like', {
+        exact: normalized,
+        like: `%${normalized}`,
+      })
+      .orderBy('order.date', 'DESC')
+      .addOrderBy('order.id', 'DESC');
 
-    return orders;
+    // Pagination is OPTIONAL — when no params are sent, return ALL the
+    // customer's orders (no hardcoded cap). Cap at 1000 per page when paginating.
+    if (limitStr != null) {
+      const limit = Math.max(1, Math.min(1000, parseInt(limitStr, 10) || 0));
+      qb.take(limit);
+    }
+    if (offsetStr != null) {
+      const offset = Math.max(0, parseInt(offsetStr, 10) || 0);
+      qb.skip(offset);
+    }
+
+    return qb.getMany();
   }
 
   @UseGuards(AuthGuard('jwt'), PermissionsGuard)

@@ -36,6 +36,50 @@ async function runMigrations(app: any) {
       if (e?.errno !== 1060) console.error(`Migration error for ${col}:`, e?.sqlMessage);
     }
   }
+
+  // Backfill order.customer_id for legacy rows where the FK was never populated.
+  // Idempotent: only touches rows where customer_id IS NULL, so re-running on
+  // every boot is a no-op once everything is linked.
+  // Pass 1: exact phone match (cheap path, no regex).
+  try {
+    const r: any = await ds.query(
+      `UPDATE \`order\` o
+       JOIN customers c ON c.phone_number = o.customer_phone
+       SET o.customer_id = c.id
+       WHERE o.customer_id IS NULL
+         AND o.customer_phone IS NOT NULL`,
+    );
+    const affected = r?.affectedRows ?? r?.[1]?.affectedRows ?? 0;
+    if (affected > 0) {
+      console.log(`Migration: backfilled order.customer_id (exact match) — ${affected} rows`);
+    }
+  } catch (e: any) {
+    console.error('Migration: customer_id exact-match backfill failed:', e?.sqlMessage);
+  }
+
+  // Pass 2: last-10-digits match for legacy rows where phone formats diverge
+  // ('+91 999...', '0999...', '999-999-9999', etc.). REGEXP_REPLACE requires
+  // MySQL 8+. If the engine doesn't support it, skip silently — pass 1 still
+  // covered most cases.
+  try {
+    const r: any = await ds.query(
+      `UPDATE \`order\` o
+       JOIN customers c
+         ON RIGHT(REGEXP_REPLACE(c.phone_number, '[^0-9]', ''), 10) =
+            RIGHT(REGEXP_REPLACE(o.customer_phone, '[^0-9]', ''), 10)
+       SET o.customer_id = c.id
+       WHERE o.customer_id IS NULL
+         AND o.customer_phone IS NOT NULL
+         AND CHAR_LENGTH(REGEXP_REPLACE(o.customer_phone, '[^0-9]', '')) >= 10`,
+    );
+    const affected = r?.affectedRows ?? r?.[1]?.affectedRows ?? 0;
+    if (affected > 0) {
+      console.log(`Migration: backfilled order.customer_id (last-10-digits match) — ${affected} rows`);
+    }
+  } catch (e: any) {
+    // Tolerate older MySQL without REGEXP_REPLACE — pass 1 already ran.
+    console.warn('Migration: customer_id digit-match backfill skipped:', e?.sqlMessage);
+  }
 }
 
 async function bootstrap() {

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Patch } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Patch, HttpException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
@@ -11,21 +11,44 @@ export class CustomersController {
     @InjectRepository(Address) private addressRepo: Repository<Address>,
   ) {}
 
+  // Strip non-digits, take last 10. Treats '+91 9999999999', '09999999999',
+  // '999-999-9999' and '9999999999' as the same identity.
+  // Returns null when the input has fewer than 10 digits.
+  static normalizePhone(input: any): string | null {
+    if (input == null) return null;
+    const digits = String(input).replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    return digits.slice(-10);
+  }
+
+  // Find a customer whose phone matches the normalized 10-digit form, even
+  // if the stored value carries a country-code prefix or formatting.
+  private async findCustomerByPhone(normalized: string): Promise<Customer | null> {
+    return this.customerRepo
+      .createQueryBuilder('c')
+      .where('c.phone_number = :exact OR c.phone_number LIKE :like', {
+        exact: normalized,
+        like: `%${normalized}`,
+      })
+      .getOne();
+  }
+
   @Post('sync')
   async syncCustomer(@Body() body: any) {
     const { name, phone, shopName, email } = body;
-    if (!phone) throw new Error('Phone is required');
+    const normalized = CustomersController.normalizePhone(phone);
+    if (!normalized) throw new HttpException('phone must contain at least 10 digits', 400);
 
-    let customer = await this.customerRepo.findOne({ where: { phone_number: phone } });
+    let customer = await this.findCustomerByPhone(normalized);
     if (!customer) {
       customer = new Customer();
-      customer.phone_number = phone;
+      customer.phone_number = normalized; // canonical 10-digit form for all new rows
       customer.name = name;
       customer.shop_no = shopName;
       if (email) customer.email = email;
       await this.customerRepo.save(customer);
     } else {
-      // update if empty
+      // Update missing/changed fields. Don't rewrite phone — preserves any historical format.
       if (name) customer.name = name;
       if (shopName) customer.shop_no = shopName;
       if (email) customer.email = email;
@@ -37,14 +60,20 @@ export class CustomersController {
 
   @Get(':phone/profile')
   async getProfile(@Param('phone') phone: string) {
-    let customer = await this.customerRepo.findOne({
-      where: { phone_number: phone },
-      relations: ['addresses'],
-    });
+    const normalized = CustomersController.normalizePhone(phone);
+    if (!normalized) return null; // invalid/short phone — same UX as "not found"
+
+    const customer = await this.customerRepo
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.addresses', 'addresses')
+      .where('c.phone_number = :exact OR c.phone_number LIKE :like', {
+        exact: normalized,
+        like: `%${normalized}`,
+      })
+      .getOne();
 
     if (!customer) {
-        // Return 404 implicitly or empty object to signify new customer
-        return null;
+      return null;
     }
     return customer;
   }
