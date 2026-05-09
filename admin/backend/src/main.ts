@@ -17,16 +17,16 @@ import { DataSource } from 'typeorm';
 async function runMigrations(app: any) {
   const ds = app.get(DataSource);
   const cols: [string, string][] = [
-    ['phone_number',    'VARCHAR(255) NULL'],
-    ['processed_at',    'TIMESTAMP NULL'],
-    ['synced_at',       'TIMESTAMP NULL'],
-    ['customer_city',   'VARCHAR(255) NULL'],
-    ['customer_state',  'VARCHAR(255) NULL'],
-    ['amount_given',    'DECIMAL(10,2) NULL'],
-    ['processed_by',    'INT NULL'],
-    ['customer_gstin',  'VARCHAR(255) NULL'],
-    ['customer_pincode','VARCHAR(255) NULL'],
-    ['customer_email',  'VARCHAR(255) NULL'],
+    ['phone_number', 'VARCHAR(255) NULL'],
+    ['processed_at', 'TIMESTAMP NULL'],
+    ['synced_at', 'TIMESTAMP NULL'],
+    ['customer_city', 'VARCHAR(255) NULL'],
+    ['customer_state', 'VARCHAR(255) NULL'],
+    ['amount_given', 'DECIMAL(10,2) NULL'],
+    ['processed_by', 'INT NULL'],
+    ['customer_gstin', 'VARCHAR(255) NULL'],
+    ['customer_pincode', 'VARCHAR(255) NULL'],
+    ['customer_email', 'VARCHAR(255) NULL'],
   ];
   for (const [col, def] of cols) {
     try {

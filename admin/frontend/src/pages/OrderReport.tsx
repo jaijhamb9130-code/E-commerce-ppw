@@ -367,11 +367,11 @@ export default function OrderReport() {
                                             </span>
                                         )}
                                         {order.processor && (
-                                            <span 
+                                            <span
                                                 className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-tight flex items-center gap-1"
                                                 style={{ color: '#2c1e0f', background: 'rgba(184,128,74,0.12)', border: '1px solid rgba(184,128,74,0.2)' }}
                                             >
-                                                Approved: {order.processor.name} 
+                                                Approved: {order.processor.name}
                                                 {order.processed_at && (
                                                     <span className="opacity-60 ml-0.5" style={{ color: copperDark }}>
                                                         at {new Date(order.processed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' } as any)}
