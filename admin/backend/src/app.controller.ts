@@ -50,7 +50,7 @@ export class AppController {
     private customerRepo: Repository<Customer>,
     @InjectRepository(Address)
     private addressRepo: Repository<Address>,
-  ) {}
+  ) { }
 
   // In-memory rate limit for unauthenticated /orders/online endpoint.
   // Survives only within a single Node process — sufficient to deter
@@ -104,20 +104,20 @@ export class AppController {
     // Online Stats
     let onlineTotal = 0, onlinePending = 0, onlineCompleted = 0, onlineUnique = 0;
     try {
-        onlineTotal = await this.orderRepo.count({ where: { source: 'online', date: todayStr as any } });
-        onlinePending = await this.orderRepo.count({ where: { source: 'online', status: 'pending' as any, date: todayStr as any } });
-        const completedCount = await this.orderRepo.count({ where: { source: 'online', status: 'completed' as any, date: todayStr as any } });
-        const fetchedCount = await this.orderRepo.count({ where: { source: 'online', status: 'fetched' as any, date: todayStr as any } });
-        onlineCompleted = completedCount + fetchedCount;
-        
-        const uniqueData = await this.orderRepo.createQueryBuilder('order')
-            .select('COUNT(DISTINCT order.phone_number)', 'count')
-            .where('order.source = :source', { source: 'online' })
-            .andWhere('order.date = :todayStr', { todayStr })
-            .getRawOne();
-        onlineUnique = parseInt(uniqueData?.count) || 0;
+      onlineTotal = await this.orderRepo.count({ where: { source: 'online', date: todayStr as any } });
+      onlinePending = await this.orderRepo.count({ where: { source: 'online', status: 'pending' as any, date: todayStr as any } });
+      const completedCount = await this.orderRepo.count({ where: { source: 'online', status: 'completed' as any, date: todayStr as any } });
+      const fetchedCount = await this.orderRepo.count({ where: { source: 'online', status: 'fetched' as any, date: todayStr as any } });
+      onlineCompleted = completedCount + fetchedCount;
+
+      const uniqueData = await this.orderRepo.createQueryBuilder('order')
+        .select('COUNT(DISTINCT order.phone_number)', 'count')
+        .where('order.source = :source', { source: 'online' })
+        .andWhere('order.date = :todayStr', { todayStr })
+        .getRawOne();
+      onlineUnique = parseInt(uniqueData?.count) || 0;
     } catch (e) {
-        console.error('Error fetching online stats:', e);
+      console.error('Error fetching online stats:', e);
     }
 
     // Staff activity today (Only Online Actions)
@@ -148,23 +148,23 @@ export class AppController {
     // Merge actions by staff ID
     const staffMap = new Map<number, any>();
     orderActionsDetailed.forEach(a => {
-        if (!a.processor_id) return;
-        const existing = staffMap.get(a.processor_id) || { id: a.processor_id, name: a.processor_name, actions: 0, details: [] };
-        existing.actions++;
-        existing.details.push(`Processed Order ${a.order_number} to ${a.status}`);
-        staffMap.set(a.processor_id, existing);
+      if (!a.processor_id) return;
+      const existing = staffMap.get(a.processor_id) || { id: a.processor_id, name: a.processor_name, actions: 0, details: [] };
+      existing.actions++;
+      existing.details.push(`Processed Order ${a.order_number} to ${a.status}`);
+      staffMap.set(a.processor_id, existing);
     });
-    
+
     itemActionsDetailed.forEach(a => {
-        if (!a.processor_id) return;
-        const existing = staffMap.get(a.processor_id) || { id: a.processor_id, name: a.processor_name, actions: 0, details: [] };
-        existing.actions++;
-        existing.details.push(`Marked item in ${a.order_number || 'Order'} as ${a.status}`);
-        staffMap.set(a.processor_id, existing);
+      if (!a.processor_id) return;
+      const existing = staffMap.get(a.processor_id) || { id: a.processor_id, name: a.processor_name, actions: 0, details: [] };
+      existing.actions++;
+      existing.details.push(`Marked item in ${a.order_number || 'Order'} as ${a.status}`);
+      staffMap.set(a.processor_id, existing);
     });
 
     const staffActivity = Array.from(staffMap.values())
-        .sort((a, b) => b.actions - a.actions);
+      .sort((a, b) => b.actions - a.actions);
 
     // Total ledgers
     const ledgerCount = await this.ledgerRepo.count();
@@ -470,13 +470,13 @@ export class AppController {
     });
 
     if (remainingPending > 0) {
-        throw new HttpException('Cannot finalize order with pending items.', 400);
+      throw new HttpException('Cannot finalize order with pending items.', 400);
     }
 
-    await this.orderRepo.update(orderId, { 
-        status: 'completed',
-        processed_by: req.user.id,
-        processed_at: new Date()
+    await this.orderRepo.update(orderId, {
+      status: 'completed',
+      processed_by: req.user.id,
+      processed_at: new Date()
     });
     return { success: true };
   }
@@ -487,12 +487,12 @@ export class AppController {
   async updateBulkStatus(@Body() body: { itemIds: number[], status: 'approved' | 'rejected' }, @Request() req: any) {
     const { itemIds, status } = body;
     if (!itemIds || itemIds.length === 0) return { success: true };
-    
+
     // Update multiple items at once
-    await this.orderDetailRepo.update(itemIds, { 
-        status,
-        processed_by: req.user.id,
-        processed_at: new Date()
+    await this.orderDetailRepo.update(itemIds, {
+      status,
+      processed_by: req.user.id,
+      processed_at: new Date()
     });
     return { success: true };
   }
@@ -507,7 +507,7 @@ export class AppController {
     });
 
     if (!item) throw new Error('Item not found');
-    
+
     // STRICT RULE: Block if order is completed or fetched
     if (item.order.status === 'completed' || item.order.status === 'fetched') {
       throw new Error('Cannot edit items in a completed or synced order.');
@@ -518,11 +518,11 @@ export class AppController {
     item.rate = rate ?? item.rate;
     item.discount_percentage = discount_percentage ?? item.discount_percentage;
     item.amount = (item.quantity * item.rate) * (1 - (item.discount_percentage / 100));
-    
+
     // Auditor fields
     item.processed_by = req.user.id;
     item.processed_at = new Date();
-    
+
     await this.orderDetailRepo.save(item);
 
     // Update order total
@@ -540,7 +540,7 @@ export class AppController {
     // Marks ALL 'completed' online orders as 'fetched' and records sync time
     await this.orderRepo.update(
       { status: 'completed', source: 'online' },
-      { 
+      {
         status: 'fetched',
         synced_at: new Date()
       }
@@ -553,89 +553,89 @@ export class AppController {
   @Post('orders')
   async createOrder(@Body() body: any) {
     try {
-    const {
-      bill_number,
-      ledger_id,
-      date,
-      total_amount,
-      items,
-      created_by,
-      order_type,
-      remark,
-      amount_given,
-    } = body;
+      const {
+        bill_number,
+        ledger_id,
+        date,
+        total_amount,
+        items,
+        created_by,
+        order_type,
+        remark,
+        amount_given,
+      } = body;
 
-    const ledger = await this.ledgerRepo.findOneBy({ id: ledger_id });
-    if (!ledger) {
-      throw new Error('Ledger not found');
-    }
-
-    if (bill_number) {
-      const existingOrder = await this.orderRepo.findOne({
-        where: { bill_number },
-      });
-      if (existingOrder) {
-        throw new Error(
-          `Order with Bill Number '${bill_number}' already exists.`,
-        );
+      const ledger = await this.ledgerRepo.findOneBy({ id: ledger_id });
+      if (!ledger) {
+        throw new Error('Ledger not found');
       }
+
+      if (bill_number) {
+        const existingOrder = await this.orderRepo.findOne({
+          where: { bill_number },
+        });
+        if (existingOrder) {
+          throw new Error(
+            `Order with Bill Number '${bill_number}' already exists.`,
+          );
+        }
+      }
+
+      const order = new Order();
+      // Allow null bill_number, user might enter it later via Tally or manually
+      order.bill_number = bill_number || null;
+      order.ledger = ledger;
+      order.date = date;
+      order.total_amount = total_amount;
+      order.order_type = order_type || 'Tax Invoice';
+      order.remark = remark;
+      order.amount_given = amount_given;
+
+      // Snapshot customer details
+      if (ledger) {
+        order.customer_name = ledger.person_name || ledger.name;
+        order.customer_address = ledger.address;
+        order.customer_phone = ledger.phone_number;
+        order.customer_email = ledger.email;
+        order.customer_gstin = ledger.gstin;
+        order.customer_pincode = ledger.pincode;
+        order.customer_state = ledger.state;
+      }
+
+      // Set created_by if provided
+      if (created_by) {
+        order.created_by = created_by;
+      }
+      order.source = 'admin';
+
+      const savedOrder = await this.orderRepo.save(order);
+      for (const item of items) {
+        const orderDetail = new OrderDetail();
+        orderDetail.order = savedOrder;
+
+        // item.name (from frontend selection) is the authoritative name — NEVER overwrite it
+        orderDetail.item_name = item.name;
+        orderDetail.rate = item.rate;
+        orderDetail.unit = item.unit;
+        orderDetail.quantity = item.quantity;
+        orderDetail.amount = item.amount;
+        orderDetail.gst = item.gst;
+        orderDetail.selected_scheme = item.selected_scheme;
+        orderDetail.discount_percentage = item.selected_discount;
+        orderDetail.livestock_type = item.livestock_type;
+        orderDetail.stock_item_id = item.masterid ?? null;
+        orderDetail.parent = item.parent || null;
+        orderDetail.group = item.group || null;
+        orderDetail.category = item.category || null;
+
+        await this.orderDetailRepo.save(orderDetail);
+      }
+
+      return savedOrder;
+    } catch (error) {
+      console.error("Order Creation Error:", error);
+      throw new Error(`Order Creation failed: ${error.message} \n ${error.stack}`);
     }
-
-    const order = new Order();
-    // Allow null bill_number, user might enter it later via Tally or manually
-    order.bill_number = bill_number || null;
-    order.ledger = ledger;
-    order.date = date;
-    order.total_amount = total_amount;
-    order.order_type = order_type || 'Tax Invoice';
-    order.remark = remark;
-    order.amount_given = amount_given;
-
-    // Snapshot customer details
-    if (ledger) {
-      order.customer_name = ledger.person_name || ledger.name;
-      order.customer_address = ledger.address;
-      order.customer_phone = ledger.phone_number;
-      order.customer_email = ledger.email;
-      order.customer_gstin = ledger.gstin;
-      order.customer_pincode = ledger.pincode;
-      order.customer_state = ledger.state;
-    }
-
-    // Set created_by if provided
-    if (created_by) {
-      order.created_by = created_by;
-    }
-    order.source = 'admin';
-
-    const savedOrder = await this.orderRepo.save(order);
-    for (const item of items) {
-      const orderDetail = new OrderDetail();
-      orderDetail.order = savedOrder;
-
-      // item.name (from frontend selection) is the authoritative name — NEVER overwrite it
-      orderDetail.item_name = item.name;
-      orderDetail.rate = item.rate;
-      orderDetail.unit = item.unit;
-      orderDetail.quantity = item.quantity;
-      orderDetail.amount = item.amount;
-      orderDetail.gst = item.gst;
-      orderDetail.selected_scheme = item.selected_scheme;
-      orderDetail.discount_percentage = item.selected_discount;
-      orderDetail.livestock_type = item.livestock_type;
-      orderDetail.stock_item_id = item.masterid ?? null;
-      orderDetail.parent = item.parent || null;
-      orderDetail.group = item.group || null;
-      orderDetail.category = item.category || null;
-
-      await this.orderDetailRepo.save(orderDetail);
-    }
-
-    return savedOrder;
-   } catch (error) {
-     console.error("Order Creation Error:", error);
-     throw new Error(`Order Creation failed: ${error.message} \n ${error.stack}`);
-   }
   }
 
   @Get('stock-items/live-stock')
@@ -679,11 +679,11 @@ export class AppController {
         }
 
         const godownName = this.tallyService.findCustomField(entry, 'GodownName') ||
-                           this.tallyService.findCustomField(entry, 'Name');
+          this.tallyService.findCustomField(entry, 'Name');
 
         const closingBalRaw = this.tallyService.findCustomField(entry, 'StkClBalance') ||
-                              this.tallyService.findCustomField(entry, 'ClosingBalance') ||
-                              '0';
+          this.tallyService.findCustomField(entry, 'ClosingBalance') ||
+          '0';
 
         // Extract value and unit (e.g., " 9042.00 Pcs" -> 9042.0, "Pcs")
         // Tally sometimes returns a string like " 9042.00 Pcs" or just "9042.00"
@@ -946,19 +946,16 @@ export class AppController {
           };
 
           const cleanName = this.cleanSql('stock.name');
-          const cleanParent = this.cleanSql('stock.parent');
           const cleanMasterId = this.cleanSql('stock.masterid');
           const cleanMrp = this.cleanSql('stock.default_mrp');
 
           query.andWhere(
             `(stock.name LIKE :${tKey} 
               OR stock.masterid LIKE :${tKey} 
-              OR stock.parent LIKE :${tKey}
               OR stock.default_mrp LIKE :${tKey}
               OR stock.group LIKE :${tKey}
               OR stock.category LIKE :${tKey}
               OR ${cleanName} LIKE :${ctKey}
-              OR ${cleanParent} LIKE :${ctKey}
               OR ${cleanMasterId} LIKE :${ctKey}
               OR ${cleanMrp} LIKE :${ctKey}
              )`,
@@ -1191,10 +1188,10 @@ export class AppController {
         const fyStart = today.getMonth() >= 3
           ? `${today.getFullYear()}-04-01`
           : `${today.getFullYear() - 1}-04-01`;
-        
+
         if (hasWhere) query.andWhere('order.date >= :fyStart', { fyStart });
         else { query.where('order.date >= :fyStart', { fyStart }); hasWhere = true; }
-        
+
         // When showing FY orders, we usually want to see everything including fetched
         // unless explicitly told otherwise. For now, just adding it to scope.
       }
@@ -1563,17 +1560,17 @@ export class AppController {
 
         items: order.orderDetails
           ? order.orderDetails.map((item) => ({
-              stock_item_name: item.item_name, // This MUST match Tally Stock Item Name
-              quantity: item.quantity,
-              rate: item.rate,
-              unit: item.unit,
-              amount: item.amount,
-              discount_percentage: item.discount_percentage,
-              gst: item.gst,
-              godown: item.livestock_type || 'Shop',
-              parent: item.parent,
-              group: item.group,
-            }))
+            stock_item_name: item.item_name, // This MUST match Tally Stock Item Name
+            quantity: item.quantity,
+            rate: item.rate,
+            unit: item.unit,
+            amount: item.amount,
+            discount_percentage: item.discount_percentage,
+            gst: item.gst,
+            godown: item.livestock_type || 'Shop',
+            parent: item.parent,
+            group: item.group,
+          }))
           : [],
       };
     });
@@ -1733,12 +1730,12 @@ export class AppController {
 
       return {
         data: data.map(d => ({
-            name: d.name,
-            phone: d.phone,
-            address: d.address,
-            lastOrderDate: d.lastOrderDate,
-            orderCount: parseInt(d.orderCount),
-            totalValue: parseFloat(d.totalValue)
+          name: d.name,
+          phone: d.phone,
+          address: d.address,
+          lastOrderDate: d.lastOrderDate,
+          orderCount: parseInt(d.orderCount),
+          totalValue: parseFloat(d.totalValue)
         })),
         pagination: {
           page: pageNum,
