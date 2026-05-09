@@ -33,7 +33,68 @@ async function runMigrations(app: any) {
       await ds.query(`ALTER TABLE \`order\` ADD COLUMN \`${col}\` ${def}`);
       console.log(`Migration: added column order.${col}`);
     } catch (e: any) {
-      if (e?.errno !== 1060) console.error(`Migration error for ${col}:`, e?.sqlMessage);
+      if (e?.errno !== 1060) console.error(`Migration error for order.${col}:`, e?.sqlMessage);
+    }
+  }
+
+  // Comprehensive audit for other tables
+  const stockCols: [string, string][] = [
+    ['ats_barcode',        'VARCHAR(255) NULL'],
+    ['group',              'VARCHAR(255) NULL'],
+    ['category',           'VARCHAR(255) NULL'],
+    ['last_purchase_cost', 'VARCHAR(255) NULL'],
+    ['is_active',          'TINYINT(1) NOT NULL DEFAULT 1'],
+    ['expiry_date',        'DATETIME NULL'],
+    ['rate_one_2',         'VARCHAR(255) NULL'],
+    ['rate_one_3',         'VARCHAR(255) NULL'],
+    ['rate_one_4',         'VARCHAR(255) NULL'],
+    ['rate_one_4a',        'VARCHAR(255) NULL'],
+    ['rate_one_5',         'VARCHAR(255) NULL'],
+    ['hsn',                'VARCHAR(255) NULL'],
+    ['gst',                'VARCHAR(255) NULL'],
+    ['default_mrp',        'VARCHAR(255) NULL'],
+  ];
+  for (const [col, def] of stockCols) {
+    try {
+      await ds.query(`ALTER TABLE \`stock_item\` ADD COLUMN \`${col}\` ${def}`);
+      console.log(`Migration: added column stock_item.${col}`);
+    } catch (e: any) {
+      if (e?.errno !== 1060) console.error(`Migration error for stock_item.${col}:`, e?.sqlMessage);
+    }
+  }
+
+  const ledgerCols: [string, string][] = [
+    ['address',         'VARCHAR(255) NULL'],
+    ['person_name',     'VARCHAR(255) NULL'],
+    ['phone_number',    'VARCHAR(255) NULL'],
+    ['email',           'VARCHAR(255) NULL'],
+    ['gstin',           'VARCHAR(255) NULL'],
+    ['pincode',         'VARCHAR(255) NULL'],
+    ['state',           'VARCHAR(255) NULL'],
+    ['tally_guid',      'VARCHAR(255) NULL'],
+  ];
+  for (const [col, def] of ledgerCols) {
+    try {
+      await ds.query(`ALTER TABLE \`ledger\` ADD COLUMN \`${col}\` ${def}`);
+      console.log(`Migration: added column ledger.${col}`);
+    } catch (e: any) {
+      if (e?.errno !== 1060) console.error(`Migration error for ledger.${col}:`, e?.sqlMessage);
+    }
+  }
+
+  const detailCols: [string, string][] = [
+    ['selected_scheme', 'VARCHAR(255) NULL'],
+    ['livestock_type',  'VARCHAR(255) NULL'],
+    ['parent',          'VARCHAR(255) NULL'],
+    ['group',           'VARCHAR(255) NULL'],
+    ['category',        'VARCHAR(255) NULL'],
+  ];
+  for (const [col, def] of detailCols) {
+    try {
+      await ds.query(`ALTER TABLE \`order_detail\` ADD COLUMN \`${col}\` ${def}`);
+      console.log(`Migration: added column order_detail.${col}`);
+    } catch (e: any) {
+      if (e?.errno !== 1060) console.error(`Migration error for order_detail.${col}:`, e?.sqlMessage);
     }
   }
 
