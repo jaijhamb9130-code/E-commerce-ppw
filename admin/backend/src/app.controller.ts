@@ -929,35 +929,42 @@ export class AppController {
       }
 
       if (search) {
-        const cleanSearch = search.replace(/[^a-zA-Z0-9]/g, '');
-        const cleanName = this.cleanSql('stock.name');
+        // Split into terms and filter out common currency stop-words that might not be in DB exactly
+        const stopWords = ['rs', 'rupee', 'rupees', 'inr', 'rp', 'rs.', 'rupee.', 'rupees.', '/'];
+        const terms = search.split(/\s+/)
+          .filter(t => t.length > 0)
+          .filter(t => !stopWords.includes(t.toLowerCase()));
 
-        if (parent) {
-          // Strict mode: Only search in Name when parent is already locked
-          query.andWhere(
-            `(stock.name LIKE :search 
-              OR ${cleanName} LIKE :cleanSearch
-             )`,
-            {
-              search: `%${search}%`,
-              cleanSearch: `%${cleanSearch}%`,
-            },
-          );
-        } else {
-          // Global mode: Include Parent in search if no parent is selected
+        terms.forEach((term, index) => {
+          const tKey = `term${index}`;
+          const ctKey = `cleanTerm${index}`;
+          const cleanTerm = term.replace(/[^a-zA-Z0-9]/g, '');
+          
+          const termParams = {
+            [tKey]: `%${term}%`,
+            [ctKey]: `%${cleanTerm}%`
+          };
+
+          const cleanName = this.cleanSql('stock.name');
           const cleanParent = this.cleanSql('stock.parent');
+          const cleanMasterId = this.cleanSql('stock.masterid');
+          const cleanMrp = this.cleanSql('stock.default_mrp');
+
           query.andWhere(
-            `(stock.name LIKE :search 
-              OR stock.parent LIKE :search
-              OR ${cleanName} LIKE :cleanSearch
-              OR ${cleanParent} LIKE :cleanSearch
+            `(stock.name LIKE :${tKey} 
+              OR stock.masterid LIKE :${tKey} 
+              OR stock.parent LIKE :${tKey}
+              OR stock.default_mrp LIKE :${tKey}
+              OR stock.group LIKE :${tKey}
+              OR stock.category LIKE :${tKey}
+              OR ${cleanName} LIKE :${ctKey}
+              OR ${cleanParent} LIKE :${ctKey}
+              OR ${cleanMasterId} LIKE :${ctKey}
+              OR ${cleanMrp} LIKE :${ctKey}
              )`,
-            {
-              search: `%${search}%`,
-              cleanSearch: `%${cleanSearch}%`,
-            },
+            termParams
           );
-        }
+        });
       }
 
       const [data, total] = await query
