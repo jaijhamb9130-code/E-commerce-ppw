@@ -104,7 +104,10 @@ export const transformStockItemToProduct = (item: StockItem): any => {
     name: cleanName || 'Unnamed Item',
     price: price,
     mrp: mrp,
-    category: item.group || item.category || 'General',
+    // brand = Tally stock group (parent); category = the item's stock category.
+    // NOTE: `group` is a copy of `parent` on the backend, so it must NOT be used
+    // for category, otherwise brand and category show the same value.
+    category: item.category || 'General',
     brand: item.parent || '',
     unit: item.base_units || 'pcs',
     rating: 0,

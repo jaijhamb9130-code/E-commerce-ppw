@@ -110,13 +110,13 @@ export default function ProductDetail() {
 
           {/* Media Section */}
           <div className="md:w-72 flex-shrink-0">
-            <div className="rounded-2xl flex items-center justify-center overflow-hidden relative"
+            <div className="rounded-2xl flex items-center justify-center overflow-hidden relative p-2"
               style={{ background: '#F8F8F8', border: '1px solid #E8E8E8', height: '220px' }}>
               {allMedia.length > 0 ? (
                 allMedia[activeImg].type === 'video' ? (
                   <video
                     key={allMedia[activeImg].url}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     controls
                     autoPlay
                     muted
@@ -128,7 +128,7 @@ export default function ProductDetail() {
                   <img
                     src={allMedia[activeImg].url}
                     alt={product.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 )
               ) : (
@@ -143,11 +143,11 @@ export default function ProductDetail() {
                   <button
                     key={item.id}
                     onClick={() => setActiveImg(i)}
-                    className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all overflow-hidden ${activeImg === i ? 'border-green-700' : 'border-gray-200'}`}
-                    style={{ background: '#1a1a1a' }}
+                    className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all overflow-hidden p-1 ${activeImg === i ? 'border-green-700' : 'border-gray-200'}`}
+                    style={{ background: '#F8F8F8' }}
                   >
                     {item.type === 'video' ? (
-                      <div className="w-full h-full flex items-center justify-center text-white text-2xl">▶</div>
+                      <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white text-2xl rounded-lg">▶</div>
                     ) : (
                       <img src={item.url} className="w-full h-full object-contain" alt="" />
                     )}
@@ -194,7 +194,18 @@ export default function ProductDetail() {
                   >
                     <Minus size={16} />
                   </button>
-                  <span className="w-12 text-center text-sm font-extrabold text-gray-900">{qty}</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={qty}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '');
+                      setQty(raw === '' ? 1 : Math.max(1, parseInt(raw, 10)));
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-12 text-center text-sm font-extrabold text-gray-900 outline-none bg-transparent border-x border-green-100"
+                    aria-label="Quantity"
+                  />
                   <button 
                     onClick={() => setQty(qty + 1)}
                     className="w-10 h-10 flex items-center justify-center text-green-700 hover:bg-green-50 transition-colors"
