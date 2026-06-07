@@ -16,6 +16,54 @@ import { DataSource } from 'typeorm';
 
 async function runMigrations(app: any) {
   const ds = app.get(DataSource);
+
+  // Ensure the customer-facing tables exist. With `synchronize` off (prod),
+  // TypeORM no longer auto-creates tables, and the column ALTERs below assume
+  // the tables already exist. `customers`/`addresses` were added after the
+  // switch, so on any DB that didn't have them from the old synchronize era
+  // (fresh DB, new RDS instance, etc.) the customer sign-up / sign-in flow
+  // would 500 with "table doesn't exist". CREATE TABLE IF NOT EXISTS is
+  // idempotent — a no-op when the table is already there.
+  const tables: [string, string][] = [
+    [
+      'customers',
+      `CREATE TABLE IF NOT EXISTS \`customers\` (
+        \`id\` INT NOT NULL AUTO_INCREMENT,
+        \`name\` VARCHAR(255) NULL,
+        \`phone_number\` VARCHAR(255) NOT NULL,
+        \`shop_no\` VARCHAR(255) NULL,
+        \`email\` VARCHAR(255) NULL,
+        \`created_at\` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`UQ_customers_phone_number\` (\`phone_number\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    ],
+    [
+      'addresses',
+      `CREATE TABLE IF NOT EXISTS \`addresses\` (
+        \`id\` INT NOT NULL AUTO_INCREMENT,
+        \`customer_id\` INT NOT NULL,
+        \`name\` VARCHAR(255) NULL,
+        \`shop_no\` VARCHAR(255) NULL,
+        \`address\` TEXT NOT NULL,
+        \`landmark\` VARCHAR(255) NULL,
+        \`is_default\` TINYINT(1) NOT NULL DEFAULT 0,
+        PRIMARY KEY (\`id\`),
+        KEY \`IDX_addresses_customer_id\` (\`customer_id\`),
+        CONSTRAINT \`FK_addresses_customer\` FOREIGN KEY (\`customer_id\`)
+          REFERENCES \`customers\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    ],
+  ];
+  for (const [name, ddl] of tables) {
+    try {
+      await ds.query(ddl);
+      console.log(`Migration: ensured table \`${name}\` exists`);
+    } catch (e: any) {
+      console.error(`Migration error ensuring table ${name}:`, e?.sqlMessage || e?.message);
+    }
+  }
+
   const cols: [string, string][] = [
     ['phone_number', 'VARCHAR(255) NULL'],
     ['processed_at', 'TIMESTAMP NULL'],
@@ -178,8 +226,44 @@ async function bootstrap() {
     app.use(json({ limit: '50mb' }));
     app.use(urlencoded({ extended: true, limit: '50mb' }));
     app.setGlobalPrefix('api');
+
+    // Fail-loud (but don't crash) if the JWT secret is left at the built-in
+    // dev fallback — that secret is in source control and forgeable.
+    if (!process.env.JWT_SECRET) {
+      console.warn(
+        '\n[SECURITY WARNING] JWT_SECRET is not set — using the hardcoded dev fallback. ' +
+          'Set JWT_SECRET in the environment (EB env properties / .env) before serving real traffic.\n',
+      );
+    }
+
+    // CORS allowlist.
+    //   - CORS_ORIGINS="https://a.com,https://b.com" → only those browser
+    //     origins are allowed (requests with no Origin header — native /
+    //     Capacitor / same-origin / curl — are always allowed).
+    //   - CORS_ORIGINS unset → fall back to reflecting any origin (previous
+    //     behaviour) so nothing breaks, with a one-line warning.
+    const allowlist = (process.env.CORS_ORIGINS || '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    let corsOrigin: any;
+    if (allowlist.length > 0) {
+      corsOrigin = (
+        origin: string | undefined,
+        cb: (err: Error | null, allow?: boolean) => void,
+      ) => {
+        if (!origin || allowlist.includes(origin)) return cb(null, true);
+        return cb(new Error(`Origin ${origin} not allowed by CORS`), false);
+      };
+    } else {
+      console.warn(
+        '[SECURITY WARNING] CORS_ORIGINS is not set — reflecting all origins. ' +
+          'Set CORS_ORIGINS to a comma-separated allowlist to restrict browser access.',
+      );
+      corsOrigin = true;
+    }
     app.enableCors({
-      origin: true,
+      origin: corsOrigin,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
       credentials: true,
     });

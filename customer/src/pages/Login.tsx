@@ -125,14 +125,23 @@ export default function AuthPage() {
       navigate('/', { state: { justLoggedIn: true } });
     } catch (err: any) {
       const status = err?.response?.status;
-      const apiMsg = err?.response?.data?.message;
+      const raw = err?.response?.data?.message;
+      const apiMsg = Array.isArray(raw) ? raw[0] : raw; // Nest validation sends arrays
       if (status === 409) {
         // Phone already registered — guide the user to sign in.
         setError(apiMsg || 'This phone is already registered. Please sign in instead.');
       } else if (status === 400) {
         setError(apiMsg || 'Invalid request. Please check your details.');
+      } else if (status === 404) {
+        // Endpoint missing — usually a stale deployed build without /customers/register.
+        setError('Service unavailable (endpoint not found). Please try again later or contact support.');
+      } else if (!err?.response) {
+        // No HTTP response at all — network / server unreachable.
+        setError('Network error — could not reach the server. Check your connection and retry.');
+      } else if (typeof apiMsg === 'string' && apiMsg) {
+        setError(apiMsg);
       } else {
-        setError('Failed to sync profile. Try again.');
+        setError(otpFor === 'signin' ? 'Sign in failed. Try again.' : 'Could not create your account. Try again.');
       }
       setLoading(false);
     }
@@ -333,6 +342,11 @@ export default function AuthPage() {
 
               {error && <AlertBanner type="error" message={error} />}
 
+              {/* Demo OTP stays visible on this screen so the user can read it
+                  while typing — the success banner on the previous screen is
+                  cleared on transition. (Demo flow: no real SMS is sent.) */}
+              <DemoOtpBanner otp={mockOtp} />
+
               <div className="w-full rounded-2xl p-6"
                 style={{
                   background: 'rgba(255,255,255,0.75)',
@@ -414,6 +428,19 @@ function AlertBanner({ type, message }: { type: 'error' | 'success'; message: st
         border: `1px solid ${isErr ? 'rgba(220,38,38,0.12)' : 'rgba(34,197,94,0.12)'}`,
       }}>
       {isErr ? '⚠️' : '✅'} {message}
+    </div>
+  );
+}
+
+function DemoOtpBanner({ otp }: { otp: string }) {
+  return (
+    <div className="w-full rounded-xl px-4 py-3 mb-4 flex items-center justify-center gap-2 text-[13px] font-semibold"
+      style={{
+        background: 'rgba(184,128,74,0.06)',
+        color: '#9a6a3c',
+        border: '1px dashed rgba(184,128,74,0.3)',
+      }}>
+      🔐 Demo OTP:&nbsp;<span className="text-[15px] font-extrabold tracking-[0.25em] tabular-nums" style={{ color: '#b8804a' }}>{otp}</span>
     </div>
   );
 }

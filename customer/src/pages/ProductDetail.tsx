@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, ShoppingCart, Zap, ChevronRight, Minus, Plus } from 'lucide-react';
+import { Star, ShoppingCart, Zap, ChevronRight, ChevronLeft, Minus, Plus, Maximize2, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { type Product } from '../components/ProductCard';
 import { fetchSingleProduct, fetchProductDetail, type FullItemDetail } from '../api';
@@ -15,7 +15,6 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState<'desc' | 'specs'>('desc');
-  const [activeImg, setActiveImg] = useState(0);
 
   useEffect(() => {
     const loadProduct = async () => {
@@ -110,51 +109,7 @@ export default function ProductDetail() {
 
           {/* Media Section */}
           <div className="md:w-72 flex-shrink-0">
-            <div className="rounded-2xl flex items-center justify-center overflow-hidden relative p-2"
-              style={{ background: '#F8F8F8', border: '1px solid #E8E8E8', height: '220px' }}>
-              {allMedia.length > 0 ? (
-                allMedia[activeImg].type === 'video' ? (
-                  <video
-                    key={allMedia[activeImg].url}
-                    className="w-full h-full object-contain"
-                    controls
-                    autoPlay
-                    muted
-                    playsInline
-                  >
-                    <source src={allMedia[activeImg].url} type="video/webm" />
-                  </video>
-                ) : (
-                  <img
-                    src={allMedia[activeImg].url}
-                    alt={product.name}
-                    className="w-full h-full object-contain"
-                  />
-                )
-              ) : (
-                <span className="text-6xl select-none">📦</span>
-              )}
-            </div>
-
-            {/* Thumbnails */}
-            {allMedia.length > 1 && (
-              <div className="flex gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
-                {allMedia.map((item, i) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveImg(i)}
-                    className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all overflow-hidden p-1 ${activeImg === i ? 'border-green-700' : 'border-gray-200'}`}
-                    style={{ background: '#F8F8F8' }}
-                  >
-                    {item.type === 'video' ? (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white text-2xl rounded-lg">▶</div>
-                    ) : (
-                      <img src={item.url} className="w-full h-full object-contain" alt="" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+            <MediaGallery media={allMedia} alt={product.name} />
           </div>
 
           {/* Info Section */}
@@ -288,6 +243,294 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Media gallery: swipeable carousel (mobile-gallery feel) with 3s auto-scroll
+   and a fullscreen lightbox. One ordered list of images + videos.
+   ────────────────────────────────────────────────────────────────────────── */
+type GalleryMedia = { id: number; type: 'image' | 'video'; url: string };
+
+const AUTO_MS = 3000;
+
+function MediaGallery({ media, alt }: { media: GalleryMedia[]; alt: string }) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [active, setActive] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const activeRef = useRef(0);          // latest active index (avoids stale closures in the timer)
+  const videoPlaying = useRef(false);   // true while the current slide's video is playing
+  const pausedUntil = useRef(0);        // suppress auto-advance until this timestamp (user interaction)
+  const downPos = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => { activeRef.current = active; }, [active]);
+
+  const scrollToIndex = (i: number, smooth = true) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  const pauseOtherVideos = (keep: number) => {
+    trackRef.current?.querySelectorAll('video').forEach((v) => {
+      if (Number(v.dataset.idx) !== keep) v.pause();
+    });
+  };
+
+  // Native scroll (manual swipe OR our programmatic scroll) is the source of truth
+  // for which slide is visible.
+  const handleScroll = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== activeRef.current && i >= 0 && i < media.length) {
+      setActive(i);
+      videoPlaying.current = false;
+      pauseOtherVideos(i);
+    }
+  };
+
+  // Auto-advance every 3s — paused while a video plays, while the lightbox is
+  // open, or briefly after the user interacts.
+  useEffect(() => {
+    if (media.length < 2) return;
+    const t = setInterval(() => {
+      if (fullscreen || videoPlaying.current || Date.now() < pausedUntil.current) return;
+      scrollToIndex((activeRef.current + 1) % media.length);
+    }, AUTO_MS);
+    return () => clearInterval(t);
+  }, [media.length, fullscreen]);
+
+  // When the lightbox opens, pause the big-box video so its audio doesn't keep
+  // playing behind the overlay. When it closes, give the user a beat before
+  // auto-scroll resumes.
+  useEffect(() => {
+    if (fullscreen) {
+      videoPlaying.current = false;
+      trackRef.current?.querySelectorAll('video').forEach((v) => v.pause());
+    } else {
+      pausedUntil.current = Date.now() + 4000;
+    }
+  }, [fullscreen]);
+
+  if (media.length === 0) {
+    return (
+      <div className="rounded-2xl flex items-center justify-center overflow-hidden p-2"
+        style={{ background: '#F8F8F8', border: '1px solid #E8E8E8', height: '220px' }}>
+        <span className="text-6xl select-none">📦</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="rounded-2xl overflow-hidden relative"
+        style={{ background: '#F8F8F8', border: '1px solid #E8E8E8', height: '220px' }}>
+        <div
+          ref={trackRef}
+          onScroll={handleScroll}
+          onPointerDown={(e) => { downPos.current = { x: e.clientX, y: e.clientY }; pausedUntil.current = Date.now() + 100000; }}
+          onPointerUp={(e) => {
+            pausedUntil.current = Date.now() + 4000; // resume auto-scroll after 4s idle
+            const d = downPos.current; downPos.current = null;
+            if (!d) return;
+            const moved = Math.abs(e.clientX - d.x) > 8 || Math.abs(e.clientY - d.y) > 8;
+            // A tap (not a swipe) on an image opens fullscreen. Taps on a video
+            // hit its controls (play) instead, per the requested behaviour.
+            if (!moved && media[activeRef.current]?.type === 'image') setFullscreen(true);
+          }}
+          onPointerCancel={() => { pausedUntil.current = Date.now() + 4000; downPos.current = null; }}
+          className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          {media.map((m, i) => (
+            <div key={m.id} className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-2">
+              {m.type === 'video' ? (
+                <video
+                  data-idx={i}
+                  src={m.url}
+                  controls
+                  playsInline
+                  className="max-w-full max-h-full object-contain"
+                  onPlay={() => { videoPlaying.current = true; }}
+                  onPause={() => { videoPlaying.current = false; }}
+                  onEnded={() => { videoPlaying.current = false; scrollToIndex((activeRef.current + 1) % media.length); }}
+                />
+              ) : (
+                // pointer-events-none so the swipe/tap is handled by the track
+                <img src={m.url} alt={alt} className="max-w-full max-h-full object-contain pointer-events-none" />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Fullscreen / expand — always available (works for video too) */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setFullscreen(true); }}
+          className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center bg-black/45 text-white backdrop-blur-sm hover:bg-black/65 transition-colors"
+          aria-label="View fullscreen"
+        >
+          <Maximize2 size={15} />
+        </button>
+
+        {/* Position dots */}
+        {media.length > 1 && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {media.map((m, i) => (
+              <span key={m.id} className={`h-1.5 rounded-full transition-all ${active === i ? 'w-4 bg-green-700' : 'w-1.5 bg-gray-300'}`} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Thumbnails */}
+      {media.length > 1 && (
+        <div className="flex gap-2 mt-3 overflow-x-auto pb-1 scrollbar-hide">
+          {media.map((m, i) => (
+            <button
+              key={m.id}
+              onClick={() => { pausedUntil.current = Date.now() + 4000; scrollToIndex(i); }}
+              className={`w-16 h-16 rounded-xl flex-shrink-0 border-2 transition-all overflow-hidden p-1 ${active === i ? 'border-green-700' : 'border-gray-200'}`}
+              style={{ background: '#F8F8F8' }}
+            >
+              {m.type === 'video' ? (
+                <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white text-2xl rounded-lg">▶</div>
+              ) : (
+                <img src={m.url} className="w-full h-full object-contain" alt="" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {fullscreen && (
+        <MediaLightbox
+          media={media}
+          startIndex={active}
+          alt={alt}
+          onClose={() => setFullscreen(false)}
+          onIndexChange={(i) => scrollToIndex(i, false)}
+        />
+      )}
+    </>
+  );
+}
+
+function MediaLightbox({ media, startIndex, alt, onClose, onIndexChange }: {
+  media: GalleryMedia[];
+  startIndex: number;
+  alt: string;
+  onClose: () => void;
+  onIndexChange?: (i: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [index, setIndex] = useState(startIndex);
+  const indexRef = useRef(startIndex);
+  const videoPlaying = useRef(false);   // same video rules as the outside carousel
+  const pausedUntil = useRef(0);
+  useEffect(() => { indexRef.current = index; }, [index]);
+
+  const scrollToIndex = (i: number, smooth = true) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+  };
+  const go = (dir: number) => scrollToIndex(Math.min(media.length - 1, Math.max(0, indexRef.current + dir)));
+
+  useEffect(() => {
+    // Open on the same item the user tapped.
+    trackRef.current?.scrollTo({ left: startIndex * (trackRef.current?.clientWidth || 0), behavior: 'auto' });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight') go(1);
+      else if (e.key === 'ArrowLeft') go(-1);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // lock background scroll
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Same 3s auto-advance as the big box: loops, pauses while a video plays or
+  // just after the user swipes, and advances when a played video ends.
+  useEffect(() => {
+    if (media.length < 2) return;
+    const t = setInterval(() => {
+      if (videoPlaying.current || Date.now() < pausedUntil.current) return;
+      scrollToIndex((indexRef.current + 1) % media.length);
+    }, AUTO_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [media.length]);
+
+  const handleScroll = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== indexRef.current && i >= 0 && i < media.length) {
+      setIndex(i);
+      onIndexChange?.(i);
+      videoPlaying.current = false;
+      el.querySelectorAll('video').forEach((v) => { if (Number(v.dataset.idx) !== i) v.pause(); });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col select-none">
+      <div className="flex items-center justify-between px-4 py-3 text-white/90">
+        <span className="text-sm font-semibold tabular-nums">{index + 1} / {media.length}</span>
+        <button type="button" onClick={onClose} aria-label="Close"
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div
+        ref={trackRef}
+        onScroll={handleScroll}
+        onPointerDown={() => { pausedUntil.current = Date.now() + 100000; }}
+        onPointerUp={() => { pausedUntil.current = Date.now() + 4000; }}
+        onPointerCancel={() => { pausedUntil.current = Date.now() + 4000; }}
+        className="flex-1 flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {media.map((m, i) => (
+          <div key={m.id} className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center p-3 sm:p-8">
+            {m.type === 'video' ? (
+              <video
+                data-idx={i}
+                src={m.url}
+                controls
+                playsInline
+                className="max-w-full max-h-full object-contain"
+                onPlay={() => { videoPlaying.current = true; }}
+                onPause={() => { videoPlaying.current = false; }}
+                onEnded={() => { videoPlaying.current = false; scrollToIndex((indexRef.current + 1) % media.length); }}
+              />
+            ) : (
+              // object-contain → original aspect ratio, fitted to the screen
+              <img src={m.url} alt={alt} className="max-w-full max-h-full object-contain" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {media.length > 1 && (
+        <>
+          <button type="button" onClick={() => go(-1)} disabled={index === 0} aria-label="Previous"
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 transition-colors">
+            <ChevronLeft size={22} />
+          </button>
+          <button type="button" onClick={() => go(1)} disabled={index === media.length - 1} aria-label="Next"
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 transition-colors">
+            <ChevronRight size={22} />
+          </button>
+        </>
+      )}
     </div>
   );
 }
