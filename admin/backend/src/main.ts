@@ -83,6 +83,25 @@ async function runMigrations(app: any) {
     ['customer_gstin', 'VARCHAR(255) NULL'],
     ['customer_pincode', 'VARCHAR(255) NULL'],
     ['customer_email', 'VARCHAR(255) NULL'],
+    // Full reconciliation of the rest of the Order entity. synchronize does not
+    // maintain the reserved-word `order` table, so any column it should have
+    // created may be missing. All NULL-safe so ADD never fails on existing rows;
+    // present columns are skipped (errno 1060). This guarantees every column the
+    // SELECT references exists.
+    ['bill_number', 'VARCHAR(255) NULL'],
+    ['tally_master_id', 'VARCHAR(255) NULL'],
+    ['customer_name', 'VARCHAR(255) NULL'],
+    ['customer_address', 'VARCHAR(255) NULL'],
+    ['customer_phone', 'VARCHAR(255) NULL'],
+    ['order_type', 'VARCHAR(50) NULL'],
+    ['date', 'DATE NULL'],
+    ['total_amount', 'DECIMAL(10,2) NULL'],
+    ['created_by', 'INT NULL'],
+    ['remark', 'TEXT NULL'],
+    ['source', 'VARCHAR(20) NULL'],
+    ['status', 'VARCHAR(20) NULL'],
+    ['ledgerId', 'INT NULL'],
+    ['created_at', 'DATETIME(6) NULL DEFAULT CURRENT_TIMESTAMP(6)'],
   ];
   for (const [col, def] of cols) {
     try {
@@ -144,6 +163,20 @@ async function runMigrations(app: any) {
     ['parent',          'VARCHAR(255) NULL'],
     ['group',           'VARCHAR(255) NULL'],
     ['category',        'VARCHAR(255) NULL'],
+    // Full reconciliation of the OrderDetail entity (the customer-orders query
+    // does leftJoinAndSelect('o.orderDetails') and selects every column).
+    ['orderId',             'INT NULL'],
+    ['stock_item_id',       'VARCHAR(255) NULL'],
+    ['item_name',           'VARCHAR(255) NULL'],
+    ['rate',                'DECIMAL(10,2) NULL'],
+    ['unit',                'VARCHAR(255) NULL'],
+    ['quantity',            'DECIMAL(10,2) NULL'],
+    ['amount',             'DECIMAL(10,2) NULL'],
+    ['gst',                 'DECIMAL(10,2) NULL'],
+    ['discount_percentage', 'DECIMAL(10,2) NULL DEFAULT 0'],
+    ['status',              'VARCHAR(20) NULL'],
+    ['processed_by',        'INT NULL'],
+    ['processed_at',        'TIMESTAMP NULL'],
   ];
   for (const [col, def] of detailCols) {
     try {
