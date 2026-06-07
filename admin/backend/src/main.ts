@@ -66,6 +66,14 @@ async function runMigrations(app: any) {
 
   const cols: [string, string][] = [
     ['phone_number', 'VARCHAR(255) NULL'],
+    // customer_id / address_id come from the Order→Customer and Order→Address
+    // relations added for the customer portal. synchronize does NOT reliably
+    // ALTER the reserved-word `order` table, so these must be created here —
+    // without them every /orders/customer/:phone query fails with
+    // "Unknown column 'o.customer_id'", and the customer_id backfill below
+    // silently no-ops.
+    ['customer_id', 'INT NULL'],
+    ['address_id', 'INT NULL'],
     ['processed_at', 'TIMESTAMP NULL'],
     ['synced_at', 'TIMESTAMP NULL'],
     ['customer_city', 'VARCHAR(255) NULL'],
