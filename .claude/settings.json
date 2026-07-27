@@ -23,7 +23,9 @@
       "mcp__plugin_context-mode_context-mode__ctx_execute",
       "Bash(taskkill //PID 2720 //F)",
       "mcp__plugin_context-mode_context-mode__ctx_execute_file",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Read(//c/Users/jaijh/OneDrive/Desktop/ppw/frontend/**)",
+      "Read(//c/Users/jaijh/OneDrive/Desktop/ppw/backend/**)"
     ]
   }
 }
